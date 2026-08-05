@@ -13,8 +13,11 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Starter Project",
-  description: "A clean starting point for building your site.",
+  title: "Doce Lucro | Gestão para confeitaria",
+  description: "Controle custos, precifique receitas, registre vendas, acompanhe despesas, lucro e metas da sua confeitaria.",
+  applicationName: "Doce Lucro",
+  manifest: "/manifest.webmanifest",
+  themeColor: "#9d3152",
   other: {
     "codex-preview": "development",
   },
@@ -30,7 +33,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="pt-BR">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
