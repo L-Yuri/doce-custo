@@ -222,13 +222,22 @@ button { color: inherit; }
 .recipe-line { display: grid; grid-template-columns: 1.5fr .7fr 34px; gap: 8px; margin-bottom: 8px; }
 .recipe-line button { border: 0; border-radius: 9px; background: #f5e8e8; color: #9c4356; cursor: pointer; font-size: 18px; }
 .add-line-button { border: 1px dashed #d4a2b1; border-radius: 9px; background: #fff9fb; color: var(--berry); padding: 9px 12px; font-size: 10px; font-weight: 800; cursor: pointer; }
-.price-preview { display: grid; grid-template-columns: 1fr 1fr 1.15fr auto; gap: 10px; align-items: stretch; border-radius: 15px; background: var(--cream); padding: 12px; }
+.price-preview { display: grid; grid-template-columns: repeat(3, 1fr) 1.15fr auto; gap: 10px; align-items: stretch; border-radius: 15px; background: var(--cream); padding: 12px; }
 .price-preview > div { padding: 8px 10px; }
 .price-preview span, .price-preview strong { display: block; }
 .price-preview span { color: var(--muted); font-size: 9px; }
 .price-preview strong { margin-top: 5px; font: 700 17px Georgia, serif; }
 .price-preview .suggested { border-radius: 10px; background: var(--berry-soft); }
 .price-preview .suggested strong { color: var(--berry); font-size: 21px; }
+.packaging-rule { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; align-items: end; border: 1px solid #cfe4dc; border-radius: 14px; background: #f1f8f5; padding: 14px; }
+.packaging-rule > div { display: grid; gap: 4px; }
+.packaging-rule strong { color: #2f6756; font-size: 13px; }
+.packaging-rule small { color: var(--muted); font-size: 10px; }
+.form-warning { border-radius: 10px; background: #fff1e8; color: #8a4f2d; padding: 11px 13px; font-size: 10px; font-weight: 700; }
+.product-form-actions { display: flex; gap: 8px; align-items: stretch; }
+.product-form-actions button { white-space: nowrap; }
+.recipe-card-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; }
+.recipe-card-actions .secondary-button { padding: 9px 13px; font-size: 10px; }
 .production-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; align-items: start; }
 .base-list { display: grid; gap: 12px; }
 .base-preview { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; border-radius: 13px; background: var(--cream); padding: 11px; }
@@ -314,7 +323,7 @@ button { color: inherit; }
   .empty-panel { padding: 40px 20px; }
   .form-row.two, .form-row.three, .form-row.four { grid-template-columns: 1fr 1fr; }
   .price-preview { grid-template-columns: 1fr 1fr; }
-  .price-preview .primary-button { grid-column: 1/-1; }
+  .product-form-actions { grid-column: 1/-1; }
   .catalog-grid { grid-template-columns: 1fr; }
   .recipe-catalog { grid-template-columns: 1fr; }
   .backup-box { display: grid; }
@@ -340,8 +349,9 @@ button { color: inherit; }
   .main-grid, .bottom-grid { gap: 10px; margin-top: 10px; }
   .form-row.two, .form-row.three, .form-row.four { grid-template-columns: 1fr; }
   .recipe-line { grid-template-columns: 1fr 90px 34px; }
+  .packaging-rule { grid-template-columns: 1fr; }
   .price-preview { grid-template-columns: 1fr; }
-  .price-preview .primary-button { grid-column: auto; }
+  .product-form-actions { grid-column: auto; flex-direction: column-reverse; }
   .recipe-detail-card .panel-heading { align-items: flex-start; }
   .recipe-price { min-width: 105px; }
   .ingredient-data-row { grid-template-columns: 1fr; }

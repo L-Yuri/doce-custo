@@ -11,7 +11,7 @@ type IngredientLine = { ingredientId: string; quantity: number };
 type ComponentLine = { kind: "ingredient" | "base"; itemId: string; quantity: number };
 type BaseRecipe = { id: string; name: string; yieldQty: number; unit: Unit; laborHours: number; otherBatchCost: number; recipe: IngredientLine[] };
 type Product = {
-  id: string; name: string; yield: number; packagingPerUnit: number; laborHours: number; otherBatchCost: number;
+  id: string; name: string; yield: number; packagingIngredientId: string; laborHours: number; otherBatchCost: number;
   desiredMargin: number; feePct: number; reservePct: number; recipe: ComponentLine[];
 };
 type Sale = { id: string; date: string; productId: string; quantity: number; unitPrice: number };
@@ -19,7 +19,7 @@ type Expense = { id: string; date: string; description: string; category: string
 type Settings = { businessName: string; monthlyGoal: number; workDays: number; hourlyRate: number };
 type AppData = { ingredients: Ingredient[]; bases: BaseRecipe[]; products: Product[]; sales: Sale[]; expenses: Expense[]; settings: Settings };
 type StoredIngredient = Omit<Ingredient, "purchaseUnit"> & { purchaseUnit?: PurchaseUnit };
-type StoredProduct = Omit<Product, "recipe"> & { recipe: Array<ComponentLine | { ingredientId: string; quantity: number }> };
+type StoredProduct = Omit<Product, "recipe" | "packagingIngredientId"> & { packagingIngredientId?: string; packagingPerUnit?: number; recipe: Array<ComponentLine | { ingredientId: string; quantity: number }> };
 type StoredData = Partial<Omit<AppData, "ingredients" | "products">> & { ingredients?: StoredIngredient[]; products?: StoredProduct[] };
 
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
@@ -40,6 +40,8 @@ const toCanonicalQty = (quantity: number, unit: PurchaseUnit) => quantity * purc
 const fromCanonicalQty = (quantity: number, unit: PurchaseUnit) => quantity / purchaseUnitFactor[unit];
 const normalizedPurchaseUnit = (unit: Unit, purchaseUnit?: PurchaseUnit): PurchaseUnit => purchaseUnit && purchaseUnitsFor(unit).includes(purchaseUnit) ? purchaseUnit : unit;
 const formatPurchaseQuantity = (ingredient: Ingredient) => `${quantityNumber.format(fromCanonicalQty(ingredient.purchaseQty, ingredient.purchaseUnit))} ${purchaseUnitLabel(ingredient.purchaseUnit)}`;
+const normalizedName = (name: string) => name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").trim();
+const isPackagingIngredient = (ingredient: Ingredient) => ingredient.unit === "un" && normalizedName(ingredient.name).includes("embalagem");
 
 const demoBase: BaseRecipe = {
   id: "brigadeiro-branco", name: "Brigadeiro branco", yieldQty: 900, unit: "g", laborHours: 0.5, otherBatchCost: 1.5,
@@ -74,7 +76,7 @@ const initialData: AppData = {
   bases: [demoBase],
   products: [
     {
-      id: "bolo-chocolate", name: "Bolo de chocolate 2 kg", yield: 1, packagingPerUnit: 6, laborHours: 2,
+      id: "bolo-chocolate", name: "Bolo de chocolate 2 kg", yield: 1, packagingIngredientId: "embalagem", laborHours: 2,
       otherBatchCost: 4.5, desiredMargin: 35, feePct: 4, reservePct: 3,
       recipe: [
         { kind: "ingredient", itemId: "farinha", quantity: 500 }, { kind: "ingredient", itemId: "chocolate", quantity: 180 },
@@ -83,7 +85,7 @@ const initialData: AppData = {
       ],
     },
     {
-      id: "bolo-pote", name: "Bolo de pote", yield: 12, packagingPerUnit: 1.25, laborHours: 1.5,
+      id: "bolo-pote", name: "Bolo de pote", yield: 12, packagingIngredientId: "embalagem", laborHours: 1.5,
       otherBatchCost: 2, desiredMargin: 32, feePct: 4, reservePct: 3,
       recipe: [
         { kind: "ingredient", itemId: "farinha", quantity: 350 }, { kind: "ingredient", itemId: "chocolate", quantity: 120 },
@@ -129,11 +131,14 @@ function productCost(product: Product, ingredients: Ingredient[], bases: BaseRec
     return sum + (base ? baseCost(base, ingredients, hourlyRate).unitCost * line.quantity : 0);
   }, 0);
   const labor = product.laborHours * hourlyRate;
-  const batchTotal = componentBatch + labor + product.otherBatchCost;
-  const unitCost = batchTotal / Math.max(1, product.yield) + product.packagingPerUnit;
+  const packagingIngredient = ingredients.find((item) => item.id === product.packagingIngredientId);
+  const packagingPerUnit = packagingIngredient ? ingredientCost(packagingIngredient) : 0;
+  const packagingBatch = packagingPerUnit * Math.max(1, product.yield);
+  const batchTotal = componentBatch + packagingBatch + labor + product.otherBatchCost;
+  const unitCost = batchTotal / Math.max(1, product.yield);
   const deductions = (product.desiredMargin + product.feePct + product.reservePct) / 100;
   const suggestedPrice = deductions < 0.95 ? unitCost / (1 - deductions) : unitCost;
-  return { componentBatch, labor, batchTotal, unitCost, suggestedPrice };
+  return { componentBatch, packagingBatch, packagingPerUnit, labor, batchTotal, unitCost, suggestedPrice };
 }
 
 function normalizeData(raw: StoredData): AppData {
@@ -143,9 +148,13 @@ function normalizeData(raw: StoredData): AppData {
   })) : initialData.ingredients;
   const hasDemoIngredients = ingredients.some((item) => item.id === "condensado") && ingredients.some((item) => item.id === "creme") && ingredients.some((item) => item.id === "manteiga");
   const bases = Array.isArray(raw.bases) ? raw.bases : (hasDemoIngredients ? [demoBase] : []);
+  const defaultPackagingId = ingredients.find(isPackagingIngredient)?.id ?? "";
   const products: Product[] = Array.isArray(raw.products) ? raw.products.map((product) => ({
     ...product,
-    recipe: (product.recipe ?? []).map((line) => "kind" in line ? line : ({ kind: "ingredient", itemId: line.ingredientId, quantity: line.quantity } as ComponentLine)),
+    packagingIngredientId: product.packagingIngredientId && ingredients.some((item) => item.id === product.packagingIngredientId) ? product.packagingIngredientId : defaultPackagingId,
+    recipe: (product.recipe ?? [])
+      .map((line) => "kind" in line ? line : ({ kind: "ingredient", itemId: line.ingredientId, quantity: line.quantity } as ComponentLine))
+      .filter((line) => line.kind !== "ingredient" || !ingredients.some((item) => item.id === line.itemId && isPackagingIngredient(item))),
   })) : initialData.products;
   return {
     ingredients, bases, products,
@@ -156,13 +165,14 @@ function normalizeData(raw: StoredData): AppData {
 
 function mergeShoppingListIngredients(data: AppData): AppData {
   const ingredients = [...data.ingredients];
-  const normalizedName = (name: string) => name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").trim();
   shoppingListIngredients.forEach((listed) => {
     const index = ingredients.findIndex((item) => item.id === listed.id || normalizedName(item.name) === normalizedName(listed.name));
     if (index < 0) ingredients.push(listed);
     else ingredients[index] = { ...ingredients[index], purchaseQty: listed.purchaseQty, purchaseUnit: listed.purchaseUnit, purchaseCost: listed.purchaseCost, unit: listed.unit };
   });
-  return { ...data, ingredients };
+  const defaultPackagingId = ingredients.find(isPackagingIngredient)?.id ?? "";
+  const products = data.products.map((product) => product.packagingIngredientId ? product : { ...product, packagingIngredientId: defaultPackagingId });
+  return { ...data, ingredients, products };
 }
 
 export default function Home() {
@@ -173,6 +183,7 @@ export default function Home() {
   const [valuesTab, setValuesTab] = useState<ValuesTab>("ingredients");
   const [ingredientSearch, setIngredientSearch] = useState("");
   const [ingredientUnitFilter, setIngredientUnitFilter] = useState<"all" | Unit>("all");
+  const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [costForm, setCostForm] = useState({ ingredientId: "condensado", purchaseQty: 395, purchaseUnit: "g" as PurchaseUnit, purchaseCost: 5.49 });
   const [ingredientForm, setIngredientForm] = useState({ name: "", purchaseQty: 1, purchaseUnit: "kg" as PurchaseUnit, purchaseCost: 0, unit: "g" as Unit, wastePct: 0 });
   const [baseForm, setBaseForm] = useState<Omit<BaseRecipe, "id">>({
@@ -180,7 +191,7 @@ export default function Home() {
     recipe: [{ ingredientId: "condensado", quantity: 395 }],
   });
   const [productForm, setProductForm] = useState<Omit<Product, "id">>({
-    name: "", yield: 1, packagingPerUnit: 0, laborHours: 1, otherBatchCost: 0,
+    name: "", yield: 1, packagingIngredientId: "embalagem", laborHours: 1, otherBatchCost: 0,
     desiredMargin: 30, feePct: 4, reservePct: 3, recipe: [{ kind: "base", itemId: "brigadeiro-branco", quantity: 200 }],
   });
   const [saleForm, setSaleForm] = useState({ date: isoDate(), productId: "bolo-chocolate", quantity: 1, unitPrice: 0 });
@@ -241,7 +252,8 @@ export default function Home() {
   const impactedBases = data.bases.filter((base) => base.recipe.some((line) => line.ingredientId === costForm.ingredientId));
   const impactedProducts = data.products.filter((product) => product.recipe.some((line) =>
     (line.kind === "ingredient" && line.itemId === costForm.ingredientId) || (line.kind === "base" && impactedBases.some((base) => base.id === line.itemId))
-  ));
+  ) || product.packagingIngredientId === costForm.ingredientId);
+  const packagingIngredients = data.ingredients.filter(isPackagingIngredient);
   const simulatedCanonicalQty = toCanonicalQty(costForm.purchaseQty, costForm.purchaseUnit);
   const simulatedIngredient = selectedIngredient ? { ...selectedIngredient, purchaseQty: simulatedCanonicalQty, purchaseUnit: costForm.purchaseUnit, purchaseCost: costForm.purchaseCost } : undefined;
   const ingredientFormCanonicalQty = toCanonicalQty(ingredientForm.purchaseQty, ingredientForm.purchaseUnit);
@@ -290,14 +302,26 @@ export default function Home() {
     setBaseForm({ name: "", yieldQty: 500, unit: "g", laborHours: 0.5, otherBatchCost: 0, recipe: [{ ingredientId: data.ingredients[0]?.id ?? "", quantity: 100 }] });
     flash("Base salva e disponível em Minhas receitas.");
   }
-  function addProduct(event: FormEvent) {
+  function resetProductForm() {
+    setEditingProductId(null);
+    setProductForm({ name: "", yield: 1, packagingIngredientId: packagingIngredients[0]?.id ?? "", laborHours: 1, otherBatchCost: 0, desiredMargin: 30, feePct: 4, reservePct: 3, recipe: [{ kind: data.bases.length ? "base" : "ingredient", itemId: data.bases[0]?.id ?? data.ingredients[0]?.id ?? "", quantity: 100 }] });
+  }
+  function editProduct(product: Product) {
+    const { id: _id, ...editableProduct } = product;
+    setEditingProductId(product.id);
+    setProductForm({ ...editableProduct, recipe: product.recipe.map((line) => ({ ...line })) });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+  function saveProduct(event: FormEvent) {
     event.preventDefault();
     if (!productForm.name.trim() || productForm.recipe.some((line) => !line.itemId || line.quantity <= 0)) return flash("Informe o produto e todos os componentes da receita.");
-    const product = { id: uid(), ...productForm, name: productForm.name.trim() };
-    setData((old) => ({ ...old, products: [...old.products, product] }));
+    if (!productForm.packagingIngredientId || !packagingIngredients.some((item) => item.id === productForm.packagingIngredientId)) return flash("Cadastre ou selecione uma embalagem medida em unidades.");
+    const product = { id: editingProductId ?? uid(), ...productForm, name: productForm.name.trim() };
+    setData((old) => ({ ...old, products: editingProductId ? old.products.map((item) => item.id === editingProductId ? product : item) : [...old.products, product] }));
     setSaleForm((old) => ({ ...old, productId: product.id, unitPrice: Number(previewProductCost.suggestedPrice.toFixed(2)) }));
-    setProductForm({ name: "", yield: 1, packagingPerUnit: 0, laborHours: 1, otherBatchCost: 0, desiredMargin: 30, feePct: 4, reservePct: 3, recipe: [{ kind: data.bases.length ? "base" : "ingredient", itemId: data.bases[0]?.id ?? data.ingredients[0]?.id ?? "", quantity: 100 }] });
-    flash("Receita final precificada e salva.");
+    const wasEditing = Boolean(editingProductId);
+    resetProductForm();
+    flash(wasEditing ? "Receita atualizada e custos recalculados." : "Receita final precificada e salva.");
   }
   function addSale(event: FormEvent) {
     event.preventDefault(); if (!saleForm.productId || saleForm.quantity <= 0 || saleForm.unitPrice <= 0) return flash("Informe produto, quantidade e preço vendido.");
@@ -308,7 +332,7 @@ export default function Home() {
     setData((old) => ({ ...old, expenses: [{ id: uid(), ...expenseForm, description: expenseForm.description.trim() }, ...old.expenses] })); setExpenseForm((old) => ({ ...old, description: "", amount: 0 })); flash("Despesa registrada.");
   }
   function remove(collection: "ingredients" | "bases" | "products" | "sales" | "expenses", id: string) {
-    if (collection === "ingredients" && (data.bases.some((base) => base.recipe.some((line) => line.ingredientId === id)) || data.products.some((product) => product.recipe.some((line) => line.kind === "ingredient" && line.itemId === id)))) return flash("Este ingrediente está sendo usado em uma base ou receita.");
+    if (collection === "ingredients" && (data.bases.some((base) => base.recipe.some((line) => line.ingredientId === id)) || data.products.some((product) => product.packagingIngredientId === id || product.recipe.some((line) => line.kind === "ingredient" && line.itemId === id)))) return flash("Este ingrediente está sendo usado em uma base, receita ou como embalagem.");
     if (collection === "bases" && data.products.some((product) => product.recipe.some((line) => line.kind === "base" && line.itemId === id))) return flash("Esta base está sendo usada em uma receita final.");
     if (collection === "products" && data.sales.some((sale) => sale.productId === id)) return flash("Este produto possui vendas e não pode ser excluído.");
     if (collection === "ingredients") setData((old) => ({ ...old, ingredients: old.ingredients.filter((item) => item.id !== id) }));
@@ -370,12 +394,12 @@ export default function Home() {
 
   function componentOptions(line: ComponentLine, index: number) {
     const value = `${line.kind}:${line.itemId}`;
-    return <select aria-label={`Componente da receita ${index + 1}`} value={value} onChange={(e) => { const [kind, itemId] = e.target.value.split(":"); const recipe = [...productForm.recipe]; recipe[index] = { ...recipe[index], kind: kind as "ingredient" | "base", itemId }; setProductForm({ ...productForm, recipe }); }}><optgroup label="Minhas bases">{data.bases.map((item) => <option value={`base:${item.id}`} key={`base-${item.id}`}>{item.name} ({item.unit})</option>)}</optgroup><optgroup label="Ingredientes diretos">{data.ingredients.map((item) => <option value={`ingredient:${item.id}`} key={`ingredient-${item.id}`}>{item.name} ({item.unit})</option>)}</optgroup></select>;
+    return <select aria-label={`Componente da receita ${index + 1}`} value={value} onChange={(e) => { const [kind, itemId] = e.target.value.split(":"); const recipe = [...productForm.recipe]; recipe[index] = { ...recipe[index], kind: kind as "ingredient" | "base", itemId }; setProductForm({ ...productForm, recipe }); }}><optgroup label="Minhas bases">{data.bases.map((item) => <option value={`base:${item.id}`} key={`base-${item.id}`}>{item.name} ({item.unit})</option>)}</optgroup><optgroup label="Ingredientes diretos">{data.ingredients.filter((item) => !isPackagingIngredient(item)).map((item) => <option value={`ingredient:${item.id}`} key={`ingredient-${item.id}`}>{item.name} ({item.unit})</option>)}</optgroup></select>;
   }
 
   const renderRecipes = () => (
-    <div className="module-stack"><section className="module-header"><div><span className="section-label">MINHAS RECEITAS</span><h2>Produtos finais com custo e preço sempre atualizados</h2><p>Combine ingredientes diretos e bases. Qualquer mudança de fornecedor chega automaticamente ao preço sugerido.</p></div></section><form className="panel product-form" onSubmit={addProduct}><div className="panel-heading"><div><span className="step-number">NOVA RECEITA FINAL</span><h3>Montar produto</h3></div><span className="soft-pill">Ingredientes + bases</span></div><div className="form-row two"><label>Nome do produto<input value={productForm.name} onChange={(e) => setProductForm({ ...productForm, name: e.target.value })} placeholder="Ex.: Bolo de leite Ninho 2 kg" /></label><label>Quantidade que a receita rende<input type="number" min="1" step="1" value={productForm.yield} onChange={(e) => setProductForm({ ...productForm, yield: Number(e.target.value) })} /></label></div><fieldset><legend>Componentes utilizados</legend>{productForm.recipe.map((line, index) => <div className="recipe-line" key={index}>{componentOptions(line, index)}<input aria-label={`Quantidade do componente ${index + 1}`} type="number" min="0.01" step="0.01" value={line.quantity} onChange={(e) => { const recipe = [...productForm.recipe]; recipe[index] = { ...recipe[index], quantity: Number(e.target.value) }; setProductForm({ ...productForm, recipe }); }} /><button type="button" aria-label="Remover componente" onClick={() => setProductForm({ ...productForm, recipe: productForm.recipe.filter((_, i) => i !== index) })}>×</button></div>)}<button className="add-line-button" type="button" onClick={() => setProductForm({ ...productForm, recipe: [...productForm.recipe, { kind: data.bases.length ? "base" : "ingredient", itemId: data.bases[0]?.id ?? data.ingredients[0]?.id ?? "", quantity: 100 }] })}>+ Adicionar ingrediente ou base</button></fieldset><div className="form-row four"><label>Embalagem/unidade<input type="number" min="0" step="0.01" value={productForm.packagingPerUnit} onChange={(e) => setProductForm({ ...productForm, packagingPerUnit: Number(e.target.value) })} /></label><label>Horas de trabalho<input type="number" min="0" step="0.25" value={productForm.laborHours} onChange={(e) => setProductForm({ ...productForm, laborHours: Number(e.target.value) })} /></label><label>Outros custos/lote<input type="number" min="0" step="0.01" value={productForm.otherBatchCost} onChange={(e) => setProductForm({ ...productForm, otherBatchCost: Number(e.target.value) })} /></label><label>Margem desejada (%)<input type="number" min="0" max="80" value={productForm.desiredMargin} onChange={(e) => setProductForm({ ...productForm, desiredMargin: Number(e.target.value) })} /></label></div><div className="form-row two compact"><label>Taxas de venda (%)<input type="number" min="0" max="30" step="0.1" value={productForm.feePct} onChange={(e) => setProductForm({ ...productForm, feePct: Number(e.target.value) })} /></label><label>Reserva para perdas (%)<input type="number" min="0" max="30" step="0.1" value={productForm.reservePct} onChange={(e) => setProductForm({ ...productForm, reservePct: Number(e.target.value) })} /></label></div><div className="price-preview"><div><span>Custo dos componentes</span><strong>{money.format(previewProductCost.componentBatch)}</strong></div><div><span>Custo por unidade</span><strong>{money.format(previewProductCost.unitCost)}</strong></div><div className="suggested"><span>Preço sugerido</span><strong>{money.format(previewProductCost.suggestedPrice)}</strong></div><button className="primary-button" type="submit">Salvar receita</button></div></form>
-      <section className="recipe-catalog"><div className="panel-heading catalog-heading"><div><span className="section-label">PRODUTOS FINAIS</span><h2>Receitas cadastradas</h2></div><span className="soft-pill">{data.products.length} produtos</span></div>{data.products.map((product) => { const cost = productCost(product, data.ingredients, data.bases, data.settings.hourlyRate); return <article className="panel recipe-detail-card product-detail" key={product.id}><div className="panel-heading"><div><span className="type-pill product-type">PRODUTO FINAL</span><h3>{product.name}</h3><p>Rende {product.yield} unidade(s)</p></div><div className="recipe-price"><small>Preço sugerido</small><strong>{money.format(cost.suggestedPrice)}</strong><span>Custo: {money.format(cost.unitCost)}/un.</span></div></div><div className="composition-list"><span>Receita</span>{product.recipe.map((line, index) => { const item = line.kind === "base" ? data.bases.find((base) => base.id === line.itemId) : data.ingredients.find((ingredient) => ingredient.id === line.itemId); const unit = item && "unit" in item ? item.unit : ""; return <div key={`${product.id}-${index}`}><span><b>{line.kind === "base" ? "Base" : "Ingrediente"}</b> · {item?.name ?? "Item removido"}</span><strong>{line.quantity} {unit}</strong></div>; })}<div><span>Embalagem</span><strong>{money.format(product.packagingPerUnit)}/un.</strong></div><div><span>Mão de obra</span><strong>{money.format(cost.labor)}</strong></div></div><button className="delete-button" type="button" onClick={() => remove("products", product.id)}>Excluir receita</button></article>; })}</section>
+    <div className="module-stack"><section className="module-header"><div><span className="section-label">MINHAS RECEITAS</span><h2>Produtos finais com custo e preço sempre atualizados</h2><p>Combine ingredientes diretos e bases. Qualquer mudança de fornecedor chega automaticamente ao preço sugerido.</p></div></section><form className="panel product-form" onSubmit={saveProduct}><div className="panel-heading"><div><span className="step-number">{editingProductId ? "EDITAR RECEITA FINAL" : "NOVA RECEITA FINAL"}</span><h3>{editingProductId ? "Editar produto" : "Montar produto"}</h3></div><span className="soft-pill">Ingredientes + bases</span></div><div className="form-row two"><label>Nome do produto<input value={productForm.name} onChange={(e) => setProductForm({ ...productForm, name: e.target.value })} placeholder="Ex.: Bolo de leite Ninho 2 kg" /></label><label>Quantidade que a receita rende<input type="number" min="1" step="1" value={productForm.yield} onChange={(e) => setProductForm({ ...productForm, yield: Number(e.target.value) })} /></label></div><fieldset><legend>Componentes utilizados</legend>{productForm.recipe.map((line, index) => <div className="recipe-line" key={index}>{componentOptions(line, index)}<input aria-label={`Quantidade do componente ${index + 1}`} type="number" min="0.01" step="0.01" value={line.quantity} onChange={(e) => { const recipe = [...productForm.recipe]; recipe[index] = { ...recipe[index], quantity: Number(e.target.value) }; setProductForm({ ...productForm, recipe }); }} /><button type="button" aria-label="Remover componente" onClick={() => setProductForm({ ...productForm, recipe: productForm.recipe.filter((_, i) => i !== index) })}>×</button></div>)}<button className="add-line-button" type="button" onClick={() => setProductForm({ ...productForm, recipe: [...productForm.recipe, { kind: data.bases.length ? "base" : "ingredient", itemId: data.bases[0]?.id ?? data.ingredients[0]?.id ?? "", quantity: 100 }] })}>+ Adicionar ingrediente ou base</button></fieldset><div className="packaging-rule"><div><span className="step-number">EMBALAGEM AUTOMÁTICA</span><strong>1 embalagem para cada unidade final</strong><small>Se a receita rende {productForm.yield} unidades, o cálculo usa {productForm.yield} embalagens.</small></div><label>Embalagem usada<select value={productForm.packagingIngredientId} onChange={(e) => setProductForm({ ...productForm, packagingIngredientId: e.target.value })}>{packagingIngredients.map((item) => <option value={item.id} key={item.id}>{item.name} · {money.format(ingredientCost(item))}/un.</option>)}</select></label></div>{!packagingIngredients.length && <div className="form-warning">Cadastre em Valores um ingrediente em unidades com “Embalagem” no nome.</div>}<div className="form-row three"><label>Horas de trabalho<input type="number" min="0" step="0.25" value={productForm.laborHours} onChange={(e) => setProductForm({ ...productForm, laborHours: Number(e.target.value) })} /></label><label>Outros custos/lote<input type="number" min="0" step="0.01" value={productForm.otherBatchCost} onChange={(e) => setProductForm({ ...productForm, otherBatchCost: Number(e.target.value) })} /></label><label>Margem desejada (%)<input type="number" min="0" max="80" value={productForm.desiredMargin} onChange={(e) => setProductForm({ ...productForm, desiredMargin: Number(e.target.value) })} /></label></div><div className="form-row two compact"><label>Taxas de venda (%)<input type="number" min="0" max="30" step="0.1" value={productForm.feePct} onChange={(e) => setProductForm({ ...productForm, feePct: Number(e.target.value) })} /></label><label>Reserva para perdas (%)<input type="number" min="0" max="30" step="0.1" value={productForm.reservePct} onChange={(e) => setProductForm({ ...productForm, reservePct: Number(e.target.value) })} /></label></div><div className="price-preview"><div><span>Componentes</span><strong>{money.format(previewProductCost.componentBatch)}</strong></div><div><span>{productForm.yield} embalagens</span><strong>{money.format(previewProductCost.packagingBatch)}</strong></div><div><span>Custo por unidade</span><strong>{money.format(previewProductCost.unitCost)}</strong></div><div className="suggested"><span>Preço sugerido</span><strong>{money.format(previewProductCost.suggestedPrice)}</strong></div><div className="product-form-actions">{editingProductId && <button className="secondary-button" type="button" onClick={resetProductForm}>Cancelar edição</button>}<button className="primary-button" type="submit">{editingProductId ? "Salvar alterações" : "Salvar receita"}</button></div></div></form>
+      <section className="recipe-catalog"><div className="panel-heading catalog-heading"><div><span className="section-label">PRODUTOS FINAIS</span><h2>Receitas cadastradas</h2></div><span className="soft-pill">{data.products.length} produtos</span></div>{data.products.map((product) => { const cost = productCost(product, data.ingredients, data.bases, data.settings.hourlyRate); const packaging = data.ingredients.find((item) => item.id === product.packagingIngredientId); return <article className="panel recipe-detail-card product-detail" key={product.id}><div className="panel-heading"><div><span className="type-pill product-type">PRODUTO FINAL</span><h3>{product.name}</h3><p>Rende {product.yield} unidade(s)</p></div><div className="recipe-price"><small>Preço sugerido</small><strong>{money.format(cost.suggestedPrice)}</strong><span>Custo: {money.format(cost.unitCost)}/un.</span></div></div><div className="composition-list"><span>Receita</span>{product.recipe.map((line, index) => { const item = line.kind === "base" ? data.bases.find((base) => base.id === line.itemId) : data.ingredients.find((ingredient) => ingredient.id === line.itemId); const unit = item && "unit" in item ? item.unit : ""; return <div key={`${product.id}-${index}`}><span><b>{line.kind === "base" ? "Base" : "Ingrediente"}</b> · {item?.name ?? "Item removido"}</span><strong>{line.quantity} {unit}</strong></div>; })}<div><span>Embalagens · {packaging?.name ?? "Não cadastrada"}</span><strong>{product.yield} un. · {money.format(cost.packagingBatch)}</strong></div><div><span>Mão de obra</span><strong>{money.format(cost.labor)}</strong></div></div><div className="recipe-card-actions"><button className="secondary-button" type="button" onClick={() => editProduct(product)}>Editar receita</button><button className="delete-button" type="button" onClick={() => remove("products", product.id)}>Excluir receita</button></div></article>; })}</section>
     </div>
   );
 
