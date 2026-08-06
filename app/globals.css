@@ -233,9 +233,20 @@ button { color: inherit; }
 .packaging-rule > div { display: grid; gap: 4px; }
 .packaging-rule strong { color: #2f6756; font-size: 13px; }
 .packaging-rule small { color: var(--muted); font-size: 10px; }
+.yield-result { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(150px, .7fr) minmax(130px, .6fr); gap: 14px; align-items: end; border: 1px solid #dcc5a7; border-radius: 14px; background: #fffaf2; padding: 14px; }
+.yield-result > div:first-child { display: grid; gap: 4px; }
+.yield-result > div:first-child strong { color: #765427; font-size: 13px; }
+.yield-result > div:first-child small { color: var(--muted); font-size: 10px; line-height: 1.5; }
+.yield-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.yield-packaging-note { border-radius: 10px; background: white; padding: 10px 12px; }
+.yield-packaging-note span, .yield-packaging-note strong { display: block; }
+.yield-packaging-note span { color: var(--muted); font-size: 9px; }
+.yield-packaging-note strong { margin-top: 4px; color: var(--berry); font-size: 13px; }
 .form-warning { border-radius: 10px; background: #fff1e8; color: #8a4f2d; padding: 11px 13px; font-size: 10px; font-weight: 700; }
 .product-form-actions { display: flex; gap: 8px; align-items: stretch; }
 .product-form-actions button { white-space: nowrap; }
+.form-save-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.form-save-actions .primary-button { min-width: 190px; }
 .recipe-card-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; }
 .recipe-card-actions .secondary-button { padding: 9px 13px; font-size: 10px; }
 .production-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; align-items: start; }
@@ -339,6 +350,9 @@ button { color: inherit; }
   .purchase-entry-grid { grid-template-columns: 1fr; align-items: stretch; }
   .unit-picker-field { min-width: 0; }
   .purchase-unit-toggle button { min-height: 42px; }
+  .yield-result { grid-template-columns: 1fr; align-items: stretch; }
+  .form-save-actions { flex-direction: column-reverse; }
+  .form-save-actions .primary-button { width: 100%; }
 }
 
 @media (max-width: 420px) {
@@ -350,6 +364,7 @@ button { color: inherit; }
   .form-row.two, .form-row.three, .form-row.four { grid-template-columns: 1fr; }
   .recipe-line { grid-template-columns: 1fr 90px 34px; }
   .packaging-rule { grid-template-columns: 1fr; }
+  .yield-inputs { grid-template-columns: 1fr; }
   .price-preview { grid-template-columns: 1fr; }
   .product-form-actions { grid-column: auto; flex-direction: column-reverse; }
   .recipe-detail-card .panel-heading { align-items: flex-start; }
