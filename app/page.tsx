@@ -46,6 +46,21 @@ const demoBase: BaseRecipe = {
   recipe: [{ ingredientId: "condensado", quantity: 790 }, { ingredientId: "creme", quantity: 200 }, { ingredientId: "manteiga", quantity: 25 }],
 };
 
+const shoppingListIngredients: Ingredient[] = [
+  { id: "creme", name: "Creme de leite", purchaseQty: 200, purchaseUnit: "g", purchaseCost: 2.59, unit: "g", wastePct: 1 },
+  { id: "morango", name: "Morango", purchaseQty: 665, purchaseUnit: "g", purchaseCost: 24, unit: "g", wastePct: 0 },
+  { id: "condensado", name: "Leite condensado", purchaseQty: 395, purchaseUnit: "g", purchaseCost: 5.49, unit: "g", wastePct: 1 },
+  { id: "banana", name: "Banana", purchaseQty: 1, purchaseUnit: "un", purchaseCost: 0.75, unit: "un", wastePct: 0 },
+  { id: "acucar", name: "Açúcar", purchaseQty: 1000, purchaseUnit: "kg", purchaseCost: 5, unit: "g", wastePct: 0 },
+  { id: "doce-leite", name: "Doce de leite", purchaseQty: 400, purchaseUnit: "g", purchaseCost: 14.99, unit: "g", wastePct: 0 },
+  { id: "biscoito-canela", name: "Biscoito canela", purchaseQty: 354, purchaseUnit: "g", purchaseCost: 6.59, unit: "g", wastePct: 0 },
+  { id: "biscoito-maizena", name: "Biscoito maizena", purchaseQty: 300, purchaseUnit: "g", purchaseCost: 6.49, unit: "g", wastePct: 0 },
+  { id: "embalagem", name: "Embalagem", purchaseQty: 25, purchaseUnit: "un", purchaseCost: 32.9, unit: "un", wastePct: 0 },
+  { id: "chantilly", name: "Chantilly", purchaseQty: 1000, purchaseUnit: "l", purchaseCost: 26.99, unit: "ml", wastePct: 0 },
+  { id: "chocolate-gotas", name: "Chocolate gotas", purchaseQty: 2000, purchaseUnit: "kg", purchaseCost: 64.9, unit: "g", wastePct: 0 },
+  { id: "canela-po", name: "Canela pó", purchaseQty: 30, purchaseUnit: "g", purchaseCost: 2.99, unit: "g", wastePct: 0 },
+];
+
 const initialData: AppData = {
   settings: { businessName: "Confeitaria da Ana", monthlyGoal: 6000, workDays: 22, hourlyRate: 18 },
   ingredients: [
@@ -53,9 +68,8 @@ const initialData: AppData = {
     { id: "chocolate", name: "Chocolate em pó", purchaseQty: 500, purchaseUnit: "g", purchaseCost: 18.9, unit: "g", wastePct: 1 },
     { id: "leite", name: "Leite integral", purchaseQty: 1000, purchaseUnit: "l", purchaseCost: 5.6, unit: "ml", wastePct: 0 },
     { id: "ovos", name: "Ovos", purchaseQty: 12, purchaseUnit: "un", purchaseCost: 10.8, unit: "un", wastePct: 4 },
-    { id: "condensado", name: "Leite condensado", purchaseQty: 395, purchaseUnit: "g", purchaseCost: 6.5, unit: "g", wastePct: 1 },
-    { id: "creme", name: "Creme de leite", purchaseQty: 200, purchaseUnit: "g", purchaseCost: 4.2, unit: "g", wastePct: 1 },
     { id: "manteiga", name: "Manteiga", purchaseQty: 200, purchaseUnit: "g", purchaseCost: 12, unit: "g", wastePct: 2 },
+    ...shoppingListIngredients,
   ],
   bases: [demoBase],
   products: [
@@ -140,6 +154,17 @@ function normalizeData(raw: StoredData): AppData {
   };
 }
 
+function mergeShoppingListIngredients(data: AppData): AppData {
+  const ingredients = [...data.ingredients];
+  const normalizedName = (name: string) => name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").trim();
+  shoppingListIngredients.forEach((listed) => {
+    const index = ingredients.findIndex((item) => item.id === listed.id || normalizedName(item.name) === normalizedName(listed.name));
+    if (index < 0) ingredients.push(listed);
+    else ingredients[index] = { ...ingredients[index], purchaseQty: listed.purchaseQty, purchaseUnit: listed.purchaseUnit, purchaseCost: listed.purchaseCost, unit: listed.unit };
+  });
+  return { ...data, ingredients };
+}
+
 export default function Home() {
   const [active, setActive] = useState("Visão geral");
   const [data, setData] = useState<AppData>(initialData);
@@ -148,7 +173,7 @@ export default function Home() {
   const [valuesTab, setValuesTab] = useState<ValuesTab>("ingredients");
   const [ingredientSearch, setIngredientSearch] = useState("");
   const [ingredientUnitFilter, setIngredientUnitFilter] = useState<"all" | Unit>("all");
-  const [costForm, setCostForm] = useState({ ingredientId: "condensado", purchaseQty: 395, purchaseUnit: "g" as PurchaseUnit, purchaseCost: 6.5 });
+  const [costForm, setCostForm] = useState({ ingredientId: "condensado", purchaseQty: 395, purchaseUnit: "g" as PurchaseUnit, purchaseCost: 5.49 });
   const [ingredientForm, setIngredientForm] = useState({ name: "", purchaseQty: 1, purchaseUnit: "kg" as PurchaseUnit, purchaseCost: 0, unit: "g" as Unit, wastePct: 0 });
   const [baseForm, setBaseForm] = useState<Omit<BaseRecipe, "id">>({
     name: "", yieldQty: 500, unit: "g", laborHours: 0.5, otherBatchCost: 0,
@@ -163,8 +188,10 @@ export default function Home() {
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem("doce-lucro-data-v3") ?? localStorage.getItem("doce-lucro-data-v2") ?? localStorage.getItem("doce-lucro-data-v1");
-      if (saved) setData(normalizeData(JSON.parse(saved)));
+      const current = localStorage.getItem("doce-lucro-data-v4");
+      const previous = localStorage.getItem("doce-lucro-data-v3") ?? localStorage.getItem("doce-lucro-data-v2") ?? localStorage.getItem("doce-lucro-data-v1");
+      if (current) setData(normalizeData(JSON.parse(current)));
+      else if (previous) setData(mergeShoppingListIngredients(normalizeData(JSON.parse(previous))));
     } catch { setNotice("Não foi possível carregar o backup deste aparelho."); }
     finally { setReady(true); }
   }, []);
@@ -172,7 +199,7 @@ export default function Home() {
   useEffect(() => {
     if (process.env.NODE_ENV === "production" && "serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => undefined);
   }, []);
-  useEffect(() => { if (ready) localStorage.setItem("doce-lucro-data-v3", JSON.stringify(data)); }, [data, ready]);
+  useEffect(() => { if (ready) localStorage.setItem("doce-lucro-data-v4", JSON.stringify(data)); }, [data, ready]);
   useEffect(() => { if (!notice) return; const timer = window.setTimeout(() => setNotice(""), 3200); return () => window.clearTimeout(timer); }, [notice]);
   useEffect(() => {
     if (saleForm.unitPrice > 0) return;
@@ -354,7 +381,7 @@ export default function Home() {
 
   const renderSales = () => <div className="module-stack"><section className="module-header"><div><span className="section-label">VENDAS</span><h2>Registre cada encomenda e veja o lucro real</h2><p>O custo atualizado da receita é descontado automaticamente.</p></div></section><div className="record-grid"><form className="panel form-panel" onSubmit={addSale}><h3>Nova venda</h3><label>Produto<select value={saleForm.productId} onChange={(e) => { const product = data.products.find((item) => item.id === e.target.value); setSaleForm({ ...saleForm, productId: e.target.value, unitPrice: product ? Number(productCost(product, data.ingredients, data.bases, data.settings.hourlyRate).suggestedPrice.toFixed(2)) : 0 }); }}>{data.products.map((product) => <option value={product.id} key={product.id}>{product.name}</option>)}</select></label><div className="form-row three"><label>Data<input type="date" value={saleForm.date} onChange={(e) => setSaleForm({ ...saleForm, date: e.target.value })} /></label><label>Quantidade<input type="number" min="1" value={saleForm.quantity} onChange={(e) => setSaleForm({ ...saleForm, quantity: Number(e.target.value) })} /></label><label>Preço vendido/un.<input type="number" min="0" step="0.01" value={saleForm.unitPrice || ""} onChange={(e) => setSaleForm({ ...saleForm, unitPrice: Number(e.target.value) })} /></label></div><div className="form-total"><span>Total da venda</span><strong>{money.format(saleForm.quantity * saleForm.unitPrice)}</strong></div><button className="primary-button full" type="submit">Registrar venda</button></form><article className="panel records-panel"><div className="panel-heading"><div><span className="section-label">HISTÓRICO</span><h3>Vendas recentes</h3></div><strong>{money.format(stats.revenue)}</strong></div>{data.sales.slice().sort((a,b) => b.date.localeCompare(a.date)).map((sale) => { const product = data.products.find((item) => item.id === sale.productId); return <div className="data-row" key={sale.id}><div><strong>{product?.name ?? "Produto removido"}</strong><small>{new Date(`${sale.date}T12:00:00`).toLocaleDateString("pt-BR")} · {sale.quantity} un.</small></div><div className="right"><strong>{money.format(sale.quantity * sale.unitPrice)}</strong><button className="delete-button" type="button" onClick={() => remove("sales", sale.id)}>Excluir</button></div></div>; })}</article></div></div>;
   const renderExpenses = () => <div className="module-stack"><section className="module-header"><div><span className="section-label">DESPESAS</span><h2>Controle tudo o que sai do caixa</h2><p>Inclua gás, energia, aluguel, entregas, divulgação e outros gastos.</p></div></section><div className="record-grid"><form className="panel form-panel" onSubmit={addExpense}><h3>Nova despesa</h3><label>Descrição<input value={expenseForm.description} onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })} placeholder="Ex.: Conta de energia" /></label><div className="form-row three"><label>Data<input type="date" value={expenseForm.date} onChange={(e) => setExpenseForm({ ...expenseForm, date: e.target.value })} /></label><label>Categoria<select value={expenseForm.category} onChange={(e) => setExpenseForm({ ...expenseForm, category: e.target.value })}><option>Produção</option><option>Fixa</option><option>Entrega</option><option>Marketing</option><option>Equipamento</option><option>Outros</option></select></label><label>Valor<input type="number" min="0" step="0.01" value={expenseForm.amount || ""} onChange={(e) => setExpenseForm({ ...expenseForm, amount: Number(e.target.value) })} /></label></div><button className="primary-button full" type="submit">Registrar despesa</button></form><article className="panel records-panel"><div className="panel-heading"><div><span className="section-label">HISTÓRICO</span><h3>Despesas recentes</h3></div><strong>{money.format(stats.expenseTotal)}</strong></div>{data.expenses.slice().sort((a,b) => b.date.localeCompare(a.date)).map((expense) => <div className="data-row" key={expense.id}><div><strong>{expense.description}</strong><small>{expense.category} · {new Date(`${expense.date}T12:00:00`).toLocaleDateString("pt-BR")}</small></div><div className="right"><strong>{money.format(expense.amount)}</strong><button className="delete-button" type="button" onClick={() => remove("expenses", expense.id)}>Excluir</button></div></div>)}</article></div></div>;
-  const renderSettings = () => <div className="module-stack"><section className="module-header"><div><span className="section-label">AJUSTES</span><h2>Personalize o Doce Lucro</h2></div></section><section className="panel settings-panel"><div className="form-row two"><label>Nome do negócio<input value={data.settings.businessName} onChange={(e) => setData({ ...data, settings: { ...data.settings, businessName: e.target.value } })} /></label><label>Meta mensal<input type="number" min="0" value={data.settings.monthlyGoal} onChange={(e) => setData({ ...data, settings: { ...data.settings, monthlyGoal: Number(e.target.value) } })} /></label></div><div className="form-row two"><label>Dias de trabalho no mês<input type="number" min="1" max="31" value={data.settings.workDays} onChange={(e) => setData({ ...data, settings: { ...data.settings, workDays: Number(e.target.value) } })} /></label><label>Valor da sua hora<input type="number" min="0" value={data.settings.hourlyRate} onChange={(e) => setData({ ...data, settings: { ...data.settings, hourlyRate: Number(e.target.value) } })} /></label></div><div className="backup-box"><div><strong>Backup dos seus dados</strong><p>Exporte uma cópia para não perder ingredientes, bases e receitas.</p></div><div className="backup-actions"><button className="secondary-button" type="button" onClick={exportData}>Exportar backup</button><label className="file-button">Restaurar backup<input type="file" accept="application/json" onChange={importData} /></label></div></div><button className="danger-button" type="button" onClick={() => { setData(initialData); localStorage.removeItem("doce-lucro-data-v1"); localStorage.removeItem("doce-lucro-data-v2"); localStorage.removeItem("doce-lucro-data-v3"); flash("Demonstração restaurada."); }}>Restaurar demonstração</button></section></div>;
+  const renderSettings = () => <div className="module-stack"><section className="module-header"><div><span className="section-label">AJUSTES</span><h2>Personalize o Doce Lucro</h2></div></section><section className="panel settings-panel"><div className="form-row two"><label>Nome do negócio<input value={data.settings.businessName} onChange={(e) => setData({ ...data, settings: { ...data.settings, businessName: e.target.value } })} /></label><label>Meta mensal<input type="number" min="0" value={data.settings.monthlyGoal} onChange={(e) => setData({ ...data, settings: { ...data.settings, monthlyGoal: Number(e.target.value) } })} /></label></div><div className="form-row two"><label>Dias de trabalho no mês<input type="number" min="1" max="31" value={data.settings.workDays} onChange={(e) => setData({ ...data, settings: { ...data.settings, workDays: Number(e.target.value) } })} /></label><label>Valor da sua hora<input type="number" min="0" value={data.settings.hourlyRate} onChange={(e) => setData({ ...data, settings: { ...data.settings, hourlyRate: Number(e.target.value) } })} /></label></div><div className="backup-box"><div><strong>Backup dos seus dados</strong><p>Exporte uma cópia para não perder ingredientes, bases e receitas.</p></div><div className="backup-actions"><button className="secondary-button" type="button" onClick={exportData}>Exportar backup</button><label className="file-button">Restaurar backup<input type="file" accept="application/json" onChange={importData} /></label></div></div><button className="danger-button" type="button" onClick={() => { setData(initialData); localStorage.removeItem("doce-lucro-data-v1"); localStorage.removeItem("doce-lucro-data-v2"); localStorage.removeItem("doce-lucro-data-v3"); localStorage.removeItem("doce-lucro-data-v4"); flash("Demonstração restaurada."); }}>Restaurar demonstração</button></section></div>;
 
   return (
     <main className="app-shell"><aside className="sidebar"><div className="brand"><span className="brand-mark">DL</span><div><strong>Doce Lucro</strong><small>Gestão para confeitaria</small></div></div><nav aria-label="Navegação principal">{navItems.map((item) => <button className={active === item ? "nav-item active" : "nav-item"} key={item} onClick={() => setActive(item)} type="button"><span className="nav-dot" />{item}</button>)}</nav><div className="sidebar-note"><span>Meta do mês</span><strong>{stats.progress.toFixed(0)}% alcançada</strong><div className="mini-progress"><span style={{ width: `${stats.progress}%` }} /></div><small>{stats.missing ? `Faltam ${money.format(stats.missing)}` : "Meta concluída!"}</small></div></aside>
