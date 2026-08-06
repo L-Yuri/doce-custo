@@ -249,6 +249,34 @@ button { color: inherit; }
 .form-save-actions .primary-button { min-width: 190px; }
 .recipe-card-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; }
 .recipe-card-actions .secondary-button { padding: 9px 13px; font-size: 10px; }
+.recipe-primary-actions { display: flex; align-items: center; gap: 7px; }
+.details-button { border: 1px solid #d7b4bf; border-radius: 12px; background: white; color: var(--berry); padding: 9px 13px; font-size: 10px; font-weight: 800; cursor: pointer; }
+.detail-overlay { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(43, 33, 29, .56); backdrop-filter: blur(3px); }
+.cost-detail-modal { width: min(700px, 100%); max-height: min(88vh, 820px); overflow-y: auto; border: 1px solid var(--line); border-radius: 22px; background: #fffdf9; padding: 22px; box-shadow: 0 24px 70px rgba(46, 30, 28, .28); }
+.cost-detail-modal header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+.cost-detail-modal header h2 { margin: 8px 0 4px; font: 700 25px Georgia, serif; }
+.cost-detail-modal header p { margin: 0; color: var(--muted); font-size: 10px; }
+.cost-detail-modal header > button { flex: 0 0 36px; width: 36px; height: 36px; border: 0; border-radius: 50%; background: var(--cream); color: var(--ink); font-size: 22px; cursor: pointer; }
+.detail-intro { display: grid; gap: 4px; padding: 16px 0 8px; }
+.detail-intro strong { font-size: 12px; }
+.detail-intro span { color: var(--muted); font-size: 10px; line-height: 1.5; }
+.detail-cost-list { display: grid; }
+.detail-cost-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 12px 0; border-bottom: 1px dashed var(--line); }
+.detail-cost-row > div { min-width: 0; display: grid; gap: 4px; }
+.detail-cost-row strong { font-size: 11px; }
+.detail-cost-row small { color: var(--muted); font-size: 9px; line-height: 1.4; }
+.detail-cost-row > b { flex: 0 0 auto; color: var(--ink); font-size: 12px; }
+.detail-cost-row.auxiliary { background: #fcf8f2; margin: 0 -8px; padding: 12px 8px; }
+.detail-totals { display: grid; grid-template-columns: repeat(2, 1fr); gap: 9px; margin: 16px 0; }
+.detail-totals.product-totals { grid-template-columns: repeat(3, 1fr); }
+.detail-totals > div { border-radius: 12px; background: var(--cream); padding: 12px; }
+.detail-totals span, .detail-totals strong { display: block; }
+.detail-totals span { color: var(--muted); font-size: 9px; }
+.detail-totals strong { margin-top: 5px; font: 700 18px Georgia, serif; }
+.detail-totals .highlight { background: var(--berry-soft); }
+.detail-totals .highlight strong { color: var(--berry); }
+.detail-percentages { display: flex; flex-wrap: wrap; gap: 7px; margin: -7px 0 16px; }
+.detail-percentages span { border-radius: 999px; background: #f2ece5; padding: 6px 9px; color: var(--muted); font-size: 9px; font-weight: 750; }
 .production-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; align-items: start; }
 .base-list { display: grid; gap: 12px; }
 .base-preview { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; border-radius: 13px; background: var(--cream); padding: 11px; }
@@ -353,6 +381,9 @@ button { color: inherit; }
   .yield-result { grid-template-columns: 1fr; align-items: stretch; }
   .form-save-actions { flex-direction: column-reverse; }
   .form-save-actions .primary-button { width: 100%; }
+  .detail-overlay { place-items: end center; padding: 0; }
+  .cost-detail-modal { width: 100%; max-height: 92vh; border-radius: 22px 22px 0 0; padding: 18px 18px calc(18px + env(safe-area-inset-bottom)); }
+  .detail-totals, .detail-totals.product-totals { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 420px) {
