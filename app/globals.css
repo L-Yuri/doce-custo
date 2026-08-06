@@ -156,6 +156,23 @@ button { color: inherit; }
 .create-ingredient-grid { display: grid; grid-template-columns: 1.25fr .75fr; gap: 15px; align-items: start; }
 .ingredient-create-card { border-color: #ddb5c1; }
 .form-intro { margin: -9px 0 2px; color: var(--muted); font-size: 10px; line-height: 1.6; }
+.measure-kind-field { margin: 0; border: 0; padding: 0; }
+.measure-kind-field legend, .unit-picker-field > span { display: block; margin-bottom: 7px; color: var(--muted); font-size: 10px; font-weight: 750; }
+.measure-kind-selector { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+.measure-kind-selector button { min-height: 58px; border: 1px solid var(--line); border-radius: 11px; background: white; color: var(--muted); padding: 8px; cursor: pointer; }
+.measure-kind-selector strong, .measure-kind-selector small { display: block; }
+.measure-kind-selector strong { color: var(--ink); font-size: 10px; }
+.measure-kind-selector small { margin-top: 3px; font-size: 8px; }
+.measure-kind-selector button.active { border-color: #cf8fa3; background: var(--berry-soft); box-shadow: 0 0 0 2px rgba(157,49,82,.06); }
+.measure-kind-selector button.active strong, .measure-kind-selector button.active small { color: var(--berry-dark); }
+.purchase-entry-grid { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: end; gap: 11px; }
+.unit-picker-field { min-width: 116px; }
+.purchase-unit-toggle { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(50px, 1fr); gap: 4px; border: 1px solid var(--line); border-radius: 11px; background: #eee7e1; padding: 4px; }
+.purchase-unit-toggle button { min-height: 34px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font-size: 10px; font-weight: 850; cursor: pointer; }
+.purchase-unit-toggle button.active { background: white; color: var(--berry-dark); box-shadow: 0 2px 8px rgba(74,52,43,.09); }
+.purchase-conversion { display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px dashed #d8b6a7; border-radius: 12px; background: #fffaf5; padding: 11px 14px; }
+.purchase-conversion span { color: var(--muted); font-size: 9px; }
+.purchase-conversion strong { color: var(--berry-dark); font-size: 12px; }
 .value-help-card { background: var(--cream); }
 .value-help-card p { color: var(--muted); font-size: 10px; line-height: 1.65; }
 .value-help-card > div { display: grid; gap: 4px; margin-top: 16px; border-radius: 12px; background: white; padding: 14px; }
@@ -310,6 +327,9 @@ button { color: inherit; }
   .ingredient-card-actions { grid-column: 1/-1; padding-top: 10px; border-top: 1px solid var(--line); }
   .ingredient-card-actions .update-button { flex: 1; min-height: 36px; }
   .ingredient-card-actions .delete-button { padding: 8px; }
+  .purchase-entry-grid { grid-template-columns: 1fr; align-items: stretch; }
+  .unit-picker-field { min-width: 0; }
+  .purchase-unit-toggle button { min-height: 42px; }
 }
 
 @media (max-width: 420px) {
@@ -331,4 +351,7 @@ button { color: inherit; }
   .ingredient-market-main { gap: 9px; }
   .ingredient-unit-badge { width: 34px; height: 34px; }
   .last-price strong { font-size: 16px; }
+  .measure-kind-selector { gap: 5px; }
+  .measure-kind-selector button { min-width: 0; padding: 7px 3px; }
+  .purchase-conversion { align-items: flex-start; flex-direction: column; gap: 4px; }
 }

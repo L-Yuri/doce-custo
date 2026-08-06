@@ -3,8 +3,10 @@
 import { ChangeEvent, CSSProperties, FormEvent, useEffect, useMemo, useState } from "react";
 
 type Unit = "g" | "ml" | "un";
+type PurchaseUnit = Unit | "kg" | "l";
+type MeasureKind = "weight" | "volume" | "count";
 type ValuesTab = "ingredients" | "update" | "create";
-type Ingredient = { id: string; name: string; purchaseQty: number; purchaseCost: number; unit: Unit; wastePct: number };
+type Ingredient = { id: string; name: string; purchaseQty: number; purchaseUnit: PurchaseUnit; purchaseCost: number; unit: Unit; wastePct: number };
 type IngredientLine = { ingredientId: string; quantity: number };
 type ComponentLine = { kind: "ingredient" | "base"; itemId: string; quantity: number };
 type BaseRecipe = { id: string; name: string; yieldQty: number; unit: Unit; laborHours: number; otherBatchCost: number; recipe: IngredientLine[] };
@@ -16,14 +18,28 @@ type Sale = { id: string; date: string; productId: string; quantity: number; uni
 type Expense = { id: string; date: string; description: string; category: string; amount: number };
 type Settings = { businessName: string; monthlyGoal: number; workDays: number; hourlyRate: number };
 type AppData = { ingredients: Ingredient[]; bases: BaseRecipe[]; products: Product[]; sales: Sale[]; expenses: Expense[]; settings: Settings };
+type StoredIngredient = Omit<Ingredient, "purchaseUnit"> & { purchaseUnit?: PurchaseUnit };
+type StoredProduct = Omit<Product, "recipe"> & { recipe: Array<ComponentLine | { ingredientId: string; quantity: number }> };
+type StoredData = Partial<Omit<AppData, "ingredients" | "products">> & { ingredients?: StoredIngredient[]; products?: StoredProduct[] };
 
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+const unitMoney = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 4 });
+const quantityNumber = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 3 });
 const navItems = ["Visão geral", "Valores", "Minhas bases", "Minhas receitas", "Vendas", "Despesas", "Ajustes"];
 const uid = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 const isoDate = (offset = 0) => {
   const date = new Date(); date.setDate(date.getDate() + offset);
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 };
+const purchaseUnitFactor: Record<PurchaseUnit, number> = { g: 1, kg: 1000, ml: 1, l: 1000, un: 1 };
+const purchaseUnitLabel = (unit: PurchaseUnit) => unit === "l" ? "L" : unit;
+const canonicalUnitFor = (unit: PurchaseUnit): Unit => unit === "kg" ? "g" : unit === "l" ? "ml" : unit;
+const purchaseUnitsFor = (unit: Unit): PurchaseUnit[] => unit === "g" ? ["g", "kg"] : unit === "ml" ? ["ml", "l"] : ["un"];
+const measureKindFor = (unit: Unit): MeasureKind => unit === "g" ? "weight" : unit === "ml" ? "volume" : "count";
+const toCanonicalQty = (quantity: number, unit: PurchaseUnit) => quantity * purchaseUnitFactor[unit];
+const fromCanonicalQty = (quantity: number, unit: PurchaseUnit) => quantity / purchaseUnitFactor[unit];
+const normalizedPurchaseUnit = (unit: Unit, purchaseUnit?: PurchaseUnit): PurchaseUnit => purchaseUnit && purchaseUnitsFor(unit).includes(purchaseUnit) ? purchaseUnit : unit;
+const formatPurchaseQuantity = (ingredient: Ingredient) => `${quantityNumber.format(fromCanonicalQty(ingredient.purchaseQty, ingredient.purchaseUnit))} ${purchaseUnitLabel(ingredient.purchaseUnit)}`;
 
 const demoBase: BaseRecipe = {
   id: "brigadeiro-branco", name: "Brigadeiro branco", yieldQty: 900, unit: "g", laborHours: 0.5, otherBatchCost: 1.5,
@@ -33,13 +49,13 @@ const demoBase: BaseRecipe = {
 const initialData: AppData = {
   settings: { businessName: "Confeitaria da Ana", monthlyGoal: 6000, workDays: 22, hourlyRate: 18 },
   ingredients: [
-    { id: "farinha", name: "Farinha de trigo", purchaseQty: 1000, purchaseCost: 6.9, unit: "g", wastePct: 2 },
-    { id: "chocolate", name: "Chocolate em pó", purchaseQty: 500, purchaseCost: 18.9, unit: "g", wastePct: 1 },
-    { id: "leite", name: "Leite integral", purchaseQty: 1000, purchaseCost: 5.6, unit: "ml", wastePct: 0 },
-    { id: "ovos", name: "Ovos", purchaseQty: 12, purchaseCost: 10.8, unit: "un", wastePct: 4 },
-    { id: "condensado", name: "Leite condensado", purchaseQty: 395, purchaseCost: 6.5, unit: "g", wastePct: 1 },
-    { id: "creme", name: "Creme de leite", purchaseQty: 200, purchaseCost: 4.2, unit: "g", wastePct: 1 },
-    { id: "manteiga", name: "Manteiga", purchaseQty: 200, purchaseCost: 12, unit: "g", wastePct: 2 },
+    { id: "farinha", name: "Farinha de trigo", purchaseQty: 1000, purchaseUnit: "kg", purchaseCost: 6.9, unit: "g", wastePct: 2 },
+    { id: "chocolate", name: "Chocolate em pó", purchaseQty: 500, purchaseUnit: "g", purchaseCost: 18.9, unit: "g", wastePct: 1 },
+    { id: "leite", name: "Leite integral", purchaseQty: 1000, purchaseUnit: "l", purchaseCost: 5.6, unit: "ml", wastePct: 0 },
+    { id: "ovos", name: "Ovos", purchaseQty: 12, purchaseUnit: "un", purchaseCost: 10.8, unit: "un", wastePct: 4 },
+    { id: "condensado", name: "Leite condensado", purchaseQty: 395, purchaseUnit: "g", purchaseCost: 6.5, unit: "g", wastePct: 1 },
+    { id: "creme", name: "Creme de leite", purchaseQty: 200, purchaseUnit: "g", purchaseCost: 4.2, unit: "g", wastePct: 1 },
+    { id: "manteiga", name: "Manteiga", purchaseQty: 200, purchaseUnit: "g", purchaseCost: 12, unit: "g", wastePct: 2 },
   ],
   bases: [demoBase],
   products: [
@@ -106,11 +122,14 @@ function productCost(product: Product, ingredients: Ingredient[], bases: BaseRec
   return { componentBatch, labor, batchTotal, unitCost, suggestedPrice };
 }
 
-function normalizeData(raw: Partial<AppData> & { products?: Array<Product & { recipe: Array<ComponentLine | { ingredientId: string; quantity: number }> }> }): AppData {
-  const ingredients = Array.isArray(raw.ingredients) ? raw.ingredients : initialData.ingredients;
+function normalizeData(raw: StoredData): AppData {
+  const ingredients: Ingredient[] = Array.isArray(raw.ingredients) ? raw.ingredients.map((ingredient) => ({
+    ...ingredient,
+    purchaseUnit: normalizedPurchaseUnit(ingredient.unit, ingredient.purchaseUnit),
+  })) : initialData.ingredients;
   const hasDemoIngredients = ingredients.some((item) => item.id === "condensado") && ingredients.some((item) => item.id === "creme") && ingredients.some((item) => item.id === "manteiga");
   const bases = Array.isArray(raw.bases) ? raw.bases : (hasDemoIngredients ? [demoBase] : []);
-  const products = Array.isArray(raw.products) ? raw.products.map((product) => ({
+  const products: Product[] = Array.isArray(raw.products) ? raw.products.map((product) => ({
     ...product,
     recipe: (product.recipe ?? []).map((line) => "kind" in line ? line : ({ kind: "ingredient", itemId: line.ingredientId, quantity: line.quantity } as ComponentLine)),
   })) : initialData.products;
@@ -129,8 +148,8 @@ export default function Home() {
   const [valuesTab, setValuesTab] = useState<ValuesTab>("ingredients");
   const [ingredientSearch, setIngredientSearch] = useState("");
   const [ingredientUnitFilter, setIngredientUnitFilter] = useState<"all" | Unit>("all");
-  const [costForm, setCostForm] = useState({ ingredientId: "condensado", purchaseQty: 395, purchaseCost: 6.5 });
-  const [ingredientForm, setIngredientForm] = useState({ name: "", purchaseQty: 1000, purchaseCost: 0, unit: "g" as Unit, wastePct: 0 });
+  const [costForm, setCostForm] = useState({ ingredientId: "condensado", purchaseQty: 395, purchaseUnit: "g" as PurchaseUnit, purchaseCost: 6.5 });
+  const [ingredientForm, setIngredientForm] = useState({ name: "", purchaseQty: 1, purchaseUnit: "kg" as PurchaseUnit, purchaseCost: 0, unit: "g" as Unit, wastePct: 0 });
   const [baseForm, setBaseForm] = useState<Omit<BaseRecipe, "id">>({
     name: "", yieldQty: 500, unit: "g", laborHours: 0.5, otherBatchCost: 0,
     recipe: [{ ingredientId: "condensado", quantity: 395 }],
@@ -144,7 +163,7 @@ export default function Home() {
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem("doce-lucro-data-v2") ?? localStorage.getItem("doce-lucro-data-v1");
+      const saved = localStorage.getItem("doce-lucro-data-v3") ?? localStorage.getItem("doce-lucro-data-v2") ?? localStorage.getItem("doce-lucro-data-v1");
       if (saved) setData(normalizeData(JSON.parse(saved)));
     } catch { setNotice("Não foi possível carregar o backup deste aparelho."); }
     finally { setReady(true); }
@@ -153,7 +172,7 @@ export default function Home() {
   useEffect(() => {
     if (process.env.NODE_ENV === "production" && "serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => undefined);
   }, []);
-  useEffect(() => { if (ready) localStorage.setItem("doce-lucro-data-v2", JSON.stringify(data)); }, [data, ready]);
+  useEffect(() => { if (ready) localStorage.setItem("doce-lucro-data-v3", JSON.stringify(data)); }, [data, ready]);
   useEffect(() => { if (!notice) return; const timer = window.setTimeout(() => setNotice(""), 3200); return () => window.clearTimeout(timer); }, [notice]);
   useEffect(() => {
     if (saleForm.unitPrice > 0) return;
@@ -196,7 +215,10 @@ export default function Home() {
   const impactedProducts = data.products.filter((product) => product.recipe.some((line) =>
     (line.kind === "ingredient" && line.itemId === costForm.ingredientId) || (line.kind === "base" && impactedBases.some((base) => base.id === line.itemId))
   ));
-  const simulatedIngredient = selectedIngredient ? { ...selectedIngredient, purchaseQty: costForm.purchaseQty, purchaseCost: costForm.purchaseCost } : undefined;
+  const simulatedCanonicalQty = toCanonicalQty(costForm.purchaseQty, costForm.purchaseUnit);
+  const simulatedIngredient = selectedIngredient ? { ...selectedIngredient, purchaseQty: simulatedCanonicalQty, purchaseUnit: costForm.purchaseUnit, purchaseCost: costForm.purchaseCost } : undefined;
+  const ingredientFormCanonicalQty = toCanonicalQty(ingredientForm.purchaseQty, ingredientForm.purchaseUnit);
+  const ingredientPreview: Ingredient = { id: "preview", ...ingredientForm, purchaseQty: ingredientFormCanonicalQty };
   const previewBase: BaseRecipe = { id: "preview-base", ...baseForm };
   const previewBaseCost = baseCost(previewBase, data.ingredients, data.settings.hourlyRate);
   const previewProduct: Product = { id: "preview-product", ...productForm };
@@ -204,23 +226,30 @@ export default function Home() {
   const dateHeading = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "numeric", month: "long" }).format(new Date()).toUpperCase();
   const flash = (message: string) => setNotice(message);
 
+  function setIngredientMeasure(kind: MeasureKind) {
+    if (kind === "weight") return setIngredientForm((old) => ({ ...old, unit: "g", purchaseUnit: "kg" }));
+    if (kind === "volume") return setIngredientForm((old) => ({ ...old, unit: "ml", purchaseUnit: "l" }));
+    setIngredientForm((old) => ({ ...old, unit: "un", purchaseUnit: "un" }));
+  }
+
   function selectIngredientForUpdate(id: string) {
     const ingredient = data.ingredients.find((item) => item.id === id);
-    if (ingredient) setCostForm({ ingredientId: id, purchaseQty: ingredient.purchaseQty, purchaseCost: ingredient.purchaseCost });
+    if (ingredient) setCostForm({ ingredientId: id, purchaseQty: fromCanonicalQty(ingredient.purchaseQty, ingredient.purchaseUnit), purchaseUnit: ingredient.purchaseUnit, purchaseCost: ingredient.purchaseCost });
   }
   function updateIngredientCost(event: FormEvent) {
     event.preventDefault();
     if (!selectedIngredient || costForm.purchaseQty <= 0 || costForm.purchaseCost <= 0) return flash("Informe a quantidade e o novo valor da compra.");
-    setData((old) => ({ ...old, ingredients: old.ingredients.map((item) => item.id === costForm.ingredientId ? { ...item, purchaseQty: costForm.purchaseQty, purchaseCost: costForm.purchaseCost } : item) }));
+    if (!purchaseUnitsFor(selectedIngredient.unit).includes(costForm.purchaseUnit)) return flash("Escolha uma unidade compatível com este ingrediente.");
+    setData((old) => ({ ...old, ingredients: old.ingredients.map((item) => item.id === costForm.ingredientId ? { ...item, purchaseQty: toCanonicalQty(costForm.purchaseQty, costForm.purchaseUnit), purchaseUnit: costForm.purchaseUnit, purchaseCost: costForm.purchaseCost } : item) }));
     flash(`Custo atualizado. ${impactedBases.length} base(s) e ${impactedProducts.length} receita(s) recalculadas.`);
   }
   function addIngredient(event: FormEvent) {
     event.preventDefault();
     if (!ingredientForm.name.trim() || ingredientForm.purchaseQty <= 0 || ingredientForm.purchaseCost <= 0) return flash("Preencha nome, quantidade e valor da compra.");
-    const ingredient = { id: uid(), ...ingredientForm, name: ingredientForm.name.trim() };
+    const ingredient: Ingredient = { id: uid(), ...ingredientForm, purchaseQty: toCanonicalQty(ingredientForm.purchaseQty, ingredientForm.purchaseUnit), name: ingredientForm.name.trim() };
     setData((old) => ({ ...old, ingredients: [...old.ingredients, ingredient] }));
-    setIngredientForm({ name: "", purchaseQty: 1000, purchaseCost: 0, unit: "g", wastePct: 0 });
-    setCostForm({ ingredientId: ingredient.id, purchaseQty: ingredient.purchaseQty, purchaseCost: ingredient.purchaseCost });
+    setIngredientForm({ name: "", purchaseQty: 1, purchaseUnit: "kg", purchaseCost: 0, unit: "g", wastePct: 0 });
+    setCostForm({ ingredientId: ingredient.id, purchaseQty: fromCanonicalQty(ingredient.purchaseQty, ingredient.purchaseUnit), purchaseUnit: ingredient.purchaseUnit, purchaseCost: ingredient.purchaseCost });
     setIngredientSearch("");
     setIngredientUnitFilter("all");
     setValuesTab("ingredients");
@@ -264,6 +293,9 @@ export default function Home() {
   }
   function exportData() { const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = `doce-lucro-backup-${isoDate()}.json`; link.click(); URL.revokeObjectURL(url); flash("Backup preparado."); }
   function importData(event: ChangeEvent<HTMLInputElement>) { const file = event.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = () => { try { setData(normalizeData(JSON.parse(String(reader.result)))); flash("Backup restaurado."); } catch { flash("Arquivo de backup inválido."); } }; reader.readAsText(file); event.target.value = ""; }
+  function purchaseUnitToggle(units: PurchaseUnit[], selected: PurchaseUnit, onSelect: (unit: PurchaseUnit) => void, label: string) {
+    return <div className="purchase-unit-toggle" role="radiogroup" aria-label={label}>{units.map((unit) => <button type="button" role="radio" aria-checked={selected === unit} className={selected === unit ? "active" : ""} onClick={() => onSelect(unit)} key={unit}>{purchaseUnitLabel(unit)}</button>)}</div>;
+  }
 
   const renderDashboard = () => (
     <>
@@ -293,14 +325,14 @@ export default function Home() {
         <div className="panel-heading market-heading"><div><span className="step-number">CONSULTA RÁPIDA</span><h3>Meus ingredientes</h3><p>Veja quanto você pagou da última vez antes de comprar novamente.</p></div><span className="soft-pill">{filteredIngredients.length} de {data.ingredients.length}</span></div>
         <label className="ingredient-search"><span>Buscar ingrediente</span><div><b>⌕</b><input type="search" value={ingredientSearch} onChange={(e) => setIngredientSearch(e.target.value)} placeholder="Ex.: leite condensado" autoComplete="off" /></div></label>
         <div className="unit-filters" aria-label="Filtrar ingredientes por unidade">{([['all', 'Todos'], ['g', 'Gramas'], ['ml', 'Mililitros'], ['un', 'Unidades']] as const).map(([value, label]) => <button type="button" className={ingredientUnitFilter === value ? "active" : ""} aria-pressed={ingredientUnitFilter === value} onClick={() => setIngredientUnitFilter(value)} key={value}>{label}</button>)}</div>
-        <div className="ingredient-market-list">{filteredIngredients.length ? filteredIngredients.map((item) => <article className="ingredient-market-card" key={item.id}><div className="ingredient-market-main"><span className="ingredient-unit-badge">{item.unit}</span><div><strong>{item.name}</strong><small>Embalagem de {item.purchaseQty} {item.unit}</small></div></div><div className="last-price"><small>Último valor pago</small><strong>{money.format(item.purchaseCost)}</strong><span>{money.format(ingredientCost(item))}/{item.unit}</span></div><div className="ingredient-card-actions"><button className="update-button" type="button" onClick={() => { selectIngredientForUpdate(item.id); setValuesTab("update"); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Atualizar preço</button><button className="delete-button" type="button" onClick={() => remove("ingredients", item.id)}>Excluir</button></div></article>) : <div className="ingredient-empty"><strong>Nenhum ingrediente encontrado</strong><p>Tente outro nome ou remova o filtro de unidade.</p></div>}</div>
+        <div className="ingredient-market-list">{filteredIngredients.length ? filteredIngredients.map((item) => <article className="ingredient-market-card" key={item.id}><div className="ingredient-market-main"><span className="ingredient-unit-badge">{purchaseUnitLabel(item.purchaseUnit)}</span><div><strong>{item.name}</strong><small>Embalagem de {formatPurchaseQuantity(item)}</small></div></div><div className="last-price"><small>Último valor pago</small><strong>{money.format(item.purchaseCost)}</strong><span>{unitMoney.format(ingredientCost(item))}/{item.unit}</span></div><div className="ingredient-card-actions"><button className="update-button" type="button" onClick={() => { selectIngredientForUpdate(item.id); setValuesTab("update"); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Atualizar preço</button><button className="delete-button" type="button" onClick={() => remove("ingredients", item.id)}>Excluir</button></div></article>) : <div className="ingredient-empty"><strong>Nenhum ingrediente encontrado</strong><p>Tente outro nome ou remova o filtro de unidade.</p></div>}</div>
       </section>}
 
-      {valuesTab === "update" && <section className="cost-update-grid" role="tabpanel"><form className="panel form-panel cost-update-card" onSubmit={updateIngredientCost}><span className="step-number">ATUALIZAÇÃO RÁPIDA</span><h3>Atualizar custo de compra</h3><label>Escolha o ingrediente<select aria-label="Ingrediente para atualizar" value={costForm.ingredientId} onChange={(e) => selectIngredientForUpdate(e.target.value)}>{data.ingredients.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>{selectedIngredient && <div className="current-purchase"><span>Última compra registrada</span><strong>{selectedIngredient.purchaseQty} {selectedIngredient.unit} por {money.format(selectedIngredient.purchaseCost)}</strong><small>Custo atual: {money.format(ingredientCost(selectedIngredient))}/{selectedIngredient.unit}</small></div>}<div className="form-row two"><label>Nova quantidade comprada<input type="number" min="0.01" step="0.01" value={costForm.purchaseQty} onChange={(e) => setCostForm({ ...costForm, purchaseQty: Number(e.target.value) })} /></label><label>Novo valor pago<input type="number" min="0.01" step="0.01" value={costForm.purchaseCost} onChange={(e) => setCostForm({ ...costForm, purchaseCost: Number(e.target.value) })} /></label></div>{simulatedIngredient && <div className="new-cost-preview"><span>Novo custo por {simulatedIngredient.unit}</span><strong>{money.format(ingredientCost(simulatedIngredient))}</strong></div>}<button className="primary-button full" type="submit">Salvar e recalcular tudo</button></form>
+      {valuesTab === "update" && <section className="cost-update-grid" role="tabpanel"><form className="panel form-panel cost-update-card" onSubmit={updateIngredientCost}><span className="step-number">ATUALIZAÇÃO RÁPIDA</span><h3>Atualizar custo de compra</h3><label>Escolha o ingrediente<select aria-label="Ingrediente para atualizar" value={costForm.ingredientId} onChange={(e) => selectIngredientForUpdate(e.target.value)}>{data.ingredients.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>{selectedIngredient && <div className="current-purchase"><span>Última compra registrada</span><strong>{formatPurchaseQuantity(selectedIngredient)} por {money.format(selectedIngredient.purchaseCost)}</strong><small>Custo atual: {unitMoney.format(ingredientCost(selectedIngredient))}/{selectedIngredient.unit}</small></div>}<div className="purchase-entry-grid"><label>Nova quantidade comprada<input type="number" inputMode="decimal" min="0.001" step="0.001" value={costForm.purchaseQty} onChange={(e) => setCostForm({ ...costForm, purchaseQty: Number(e.target.value) })} /></label><div className="unit-picker-field"><span>Unidade da compra</span>{selectedIngredient && purchaseUnitToggle(purchaseUnitsFor(selectedIngredient.unit), costForm.purchaseUnit, (purchaseUnit) => setCostForm({ ...costForm, purchaseUnit }), "Unidade da nova compra")}</div><label>Novo valor pago<input type="number" inputMode="decimal" min="0.01" step="0.01" value={costForm.purchaseCost} onChange={(e) => setCostForm({ ...costForm, purchaseCost: Number(e.target.value) })} /></label></div>{selectedIngredient && costForm.purchaseQty > 0 && <div className="purchase-conversion"><span>{quantityNumber.format(costForm.purchaseQty)} {purchaseUnitLabel(costForm.purchaseUnit)} equivalem a</span><strong>{quantityNumber.format(simulatedCanonicalQty)} {selectedIngredient.unit}</strong></div>}{simulatedIngredient && <div className="new-cost-preview"><span>Novo custo por {simulatedIngredient.unit}</span><strong>{unitMoney.format(ingredientCost(simulatedIngredient))}</strong></div>}<button className="primary-button full" type="submit">Salvar e recalcular tudo</button></form>
         <article className="panel impact-panel"><span className="step-number">ATUALIZAÇÃO EM CADEIA</span><h3>O que será recalculado</h3><div className="flow-card"><span>1</span><div><small>Ingrediente</small><strong>{selectedIngredient?.name ?? "Selecione um ingrediente"}</strong></div></div><div className="flow-arrow">↓</div><div className="flow-card"><span>2</span><div><small>Minhas bases</small><strong>{impactedBases.length ? impactedBases.map((item) => item.name).join(", ") : "Nenhuma base utiliza diretamente"}</strong></div></div><div className="flow-arrow">↓</div><div className="flow-card"><span>3</span><div><small>Minhas receitas</small><strong>{impactedProducts.length ? impactedProducts.map((item) => item.name).join(", ") : "Nenhuma receita afetada"}</strong></div></div><p className="impact-note">Os cálculos mudam automaticamente. A receita e as quantidades permanecem iguais.</p></article>
       </section>}
 
-      {valuesTab === "create" && <section className="create-ingredient-grid" role="tabpanel"><form className="panel form-panel ingredient-create-card" onSubmit={addIngredient}><div><span className="step-number">NOVO CADASTRO</span><h3>Cadastrar ingrediente</h3><p className="form-intro">Informe como o produto é comprado. O custo por grama, ml ou unidade será calculado automaticamente.</p></div><label>Nome do ingrediente<input value={ingredientForm.name} onChange={(e) => setIngredientForm({ ...ingredientForm, name: e.target.value })} placeholder="Ex.: Leite em pó" /></label><div className="form-row three"><label>Quantidade comprada<input type="number" min="0.01" step="0.01" value={ingredientForm.purchaseQty} onChange={(e) => setIngredientForm({ ...ingredientForm, purchaseQty: Number(e.target.value) })} /></label><label>Unidade<select value={ingredientForm.unit} onChange={(e) => setIngredientForm({ ...ingredientForm, unit: e.target.value as Unit })}><option value="g">gramas</option><option value="ml">mililitros</option><option value="un">unidades</option></select></label><label>Valor pago<input type="number" min="0.01" step="0.01" value={ingredientForm.purchaseCost || ""} onChange={(e) => setIngredientForm({ ...ingredientForm, purchaseCost: Number(e.target.value) })} /></label></div><label>Perda estimada (%)<input type="number" min="0" max="80" step="0.1" value={ingredientForm.wastePct} onChange={(e) => setIngredientForm({ ...ingredientForm, wastePct: Number(e.target.value) })} /></label>{ingredientForm.purchaseQty > 0 && ingredientForm.purchaseCost > 0 && <div className="new-cost-preview"><span>Custo calculado por {ingredientForm.unit}</span><strong>{money.format(ingredientCost({ id: "preview", ...ingredientForm }))}</strong></div>}<button className="primary-button full" type="submit">Cadastrar ingrediente</button></form><article className="panel value-help-card"><span className="step-number">DICA DE CADASTRO</span><h3>Use a unidade da receita</h3><p>Se você usa farinha em gramas, cadastre o pacote em gramas. Para leite, use ml. Ovos e embalagens podem ser cadastrados por unidade.</p><div><span>Exemplo</span><strong>1 kg de farinha = 1.000 g</strong><small>Informe 1.000 g e o preço total do pacote.</small></div></article></section>}
+      {valuesTab === "create" && <section className="create-ingredient-grid" role="tabpanel"><form className="panel form-panel ingredient-create-card" onSubmit={addIngredient}><div><span className="step-number">NOVO CADASTRO</span><h3>Cadastrar ingrediente</h3><p className="form-intro">Informe como o produto é comprado. O sistema fará a conversão para a unidade usada nas receitas.</p></div><label>Nome do ingrediente<input value={ingredientForm.name} onChange={(e) => setIngredientForm({ ...ingredientForm, name: e.target.value })} placeholder="Ex.: Leite em pó" /></label><fieldset className="measure-kind-field"><legend>Como este ingrediente é medido?</legend><div className="measure-kind-selector" role="radiogroup" aria-label="Tipo de medida do ingrediente">{([['weight', 'Peso', 'g ou kg'], ['volume', 'Volume', 'ml ou L'], ['count', 'Unidade', 'itens']] as const).map(([kind, label, hint]) => <button type="button" role="radio" aria-checked={measureKindFor(ingredientForm.unit) === kind} className={measureKindFor(ingredientForm.unit) === kind ? "active" : ""} onClick={() => setIngredientMeasure(kind)} key={kind}><strong>{label}</strong><small>{hint}</small></button>)}</div></fieldset><div className="purchase-entry-grid"><label>Quantidade comprada<input type="number" inputMode="decimal" min="0.001" step="0.001" value={ingredientForm.purchaseQty} onChange={(e) => setIngredientForm({ ...ingredientForm, purchaseQty: Number(e.target.value) })} /></label><div className="unit-picker-field"><span>Unidade da compra</span>{purchaseUnitToggle(purchaseUnitsFor(ingredientForm.unit), ingredientForm.purchaseUnit, (purchaseUnit) => setIngredientForm({ ...ingredientForm, purchaseUnit, unit: canonicalUnitFor(purchaseUnit) }), "Unidade de compra do ingrediente")}</div><label>Valor pago<input type="number" inputMode="decimal" min="0.01" step="0.01" value={ingredientForm.purchaseCost || ""} onChange={(e) => setIngredientForm({ ...ingredientForm, purchaseCost: Number(e.target.value) })} /></label></div><label>Perda estimada (%)<input type="number" inputMode="decimal" min="0" max="80" step="0.1" value={ingredientForm.wastePct} onChange={(e) => setIngredientForm({ ...ingredientForm, wastePct: Number(e.target.value) })} /></label>{ingredientForm.purchaseQty > 0 && <div className="purchase-conversion"><span>{quantityNumber.format(ingredientForm.purchaseQty)} {purchaseUnitLabel(ingredientForm.purchaseUnit)} equivalem a</span><strong>{quantityNumber.format(ingredientFormCanonicalQty)} {ingredientForm.unit}</strong></div>}{ingredientForm.purchaseQty > 0 && ingredientForm.purchaseCost > 0 && <div className="new-cost-preview"><span>Custo calculado por {ingredientForm.unit}</span><strong>{unitMoney.format(ingredientCost(ingredientPreview))}</strong></div>}<button className="primary-button full" type="submit">Cadastrar ingrediente</button></form><article className="panel value-help-card"><span className="step-number">COMPRA SEM DUPLICAR</span><h3>A embalagem pode mudar</h3><p>Cadastre “Farinha de trigo” uma única vez. Se depois comprar um saco de 10 kg, use Atualizar custos e informe 10 kg com o novo valor.</p><div><span>Exemplo</span><strong>10 kg = 10.000 g</strong><small>As bases e receitas continuam usando gramas e são recalculadas automaticamente.</small></div></article></section>}
     </div>
   );
 
@@ -322,7 +354,7 @@ export default function Home() {
 
   const renderSales = () => <div className="module-stack"><section className="module-header"><div><span className="section-label">VENDAS</span><h2>Registre cada encomenda e veja o lucro real</h2><p>O custo atualizado da receita é descontado automaticamente.</p></div></section><div className="record-grid"><form className="panel form-panel" onSubmit={addSale}><h3>Nova venda</h3><label>Produto<select value={saleForm.productId} onChange={(e) => { const product = data.products.find((item) => item.id === e.target.value); setSaleForm({ ...saleForm, productId: e.target.value, unitPrice: product ? Number(productCost(product, data.ingredients, data.bases, data.settings.hourlyRate).suggestedPrice.toFixed(2)) : 0 }); }}>{data.products.map((product) => <option value={product.id} key={product.id}>{product.name}</option>)}</select></label><div className="form-row three"><label>Data<input type="date" value={saleForm.date} onChange={(e) => setSaleForm({ ...saleForm, date: e.target.value })} /></label><label>Quantidade<input type="number" min="1" value={saleForm.quantity} onChange={(e) => setSaleForm({ ...saleForm, quantity: Number(e.target.value) })} /></label><label>Preço vendido/un.<input type="number" min="0" step="0.01" value={saleForm.unitPrice || ""} onChange={(e) => setSaleForm({ ...saleForm, unitPrice: Number(e.target.value) })} /></label></div><div className="form-total"><span>Total da venda</span><strong>{money.format(saleForm.quantity * saleForm.unitPrice)}</strong></div><button className="primary-button full" type="submit">Registrar venda</button></form><article className="panel records-panel"><div className="panel-heading"><div><span className="section-label">HISTÓRICO</span><h3>Vendas recentes</h3></div><strong>{money.format(stats.revenue)}</strong></div>{data.sales.slice().sort((a,b) => b.date.localeCompare(a.date)).map((sale) => { const product = data.products.find((item) => item.id === sale.productId); return <div className="data-row" key={sale.id}><div><strong>{product?.name ?? "Produto removido"}</strong><small>{new Date(`${sale.date}T12:00:00`).toLocaleDateString("pt-BR")} · {sale.quantity} un.</small></div><div className="right"><strong>{money.format(sale.quantity * sale.unitPrice)}</strong><button className="delete-button" type="button" onClick={() => remove("sales", sale.id)}>Excluir</button></div></div>; })}</article></div></div>;
   const renderExpenses = () => <div className="module-stack"><section className="module-header"><div><span className="section-label">DESPESAS</span><h2>Controle tudo o que sai do caixa</h2><p>Inclua gás, energia, aluguel, entregas, divulgação e outros gastos.</p></div></section><div className="record-grid"><form className="panel form-panel" onSubmit={addExpense}><h3>Nova despesa</h3><label>Descrição<input value={expenseForm.description} onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })} placeholder="Ex.: Conta de energia" /></label><div className="form-row three"><label>Data<input type="date" value={expenseForm.date} onChange={(e) => setExpenseForm({ ...expenseForm, date: e.target.value })} /></label><label>Categoria<select value={expenseForm.category} onChange={(e) => setExpenseForm({ ...expenseForm, category: e.target.value })}><option>Produção</option><option>Fixa</option><option>Entrega</option><option>Marketing</option><option>Equipamento</option><option>Outros</option></select></label><label>Valor<input type="number" min="0" step="0.01" value={expenseForm.amount || ""} onChange={(e) => setExpenseForm({ ...expenseForm, amount: Number(e.target.value) })} /></label></div><button className="primary-button full" type="submit">Registrar despesa</button></form><article className="panel records-panel"><div className="panel-heading"><div><span className="section-label">HISTÓRICO</span><h3>Despesas recentes</h3></div><strong>{money.format(stats.expenseTotal)}</strong></div>{data.expenses.slice().sort((a,b) => b.date.localeCompare(a.date)).map((expense) => <div className="data-row" key={expense.id}><div><strong>{expense.description}</strong><small>{expense.category} · {new Date(`${expense.date}T12:00:00`).toLocaleDateString("pt-BR")}</small></div><div className="right"><strong>{money.format(expense.amount)}</strong><button className="delete-button" type="button" onClick={() => remove("expenses", expense.id)}>Excluir</button></div></div>)}</article></div></div>;
-  const renderSettings = () => <div className="module-stack"><section className="module-header"><div><span className="section-label">AJUSTES</span><h2>Personalize o Doce Lucro</h2></div></section><section className="panel settings-panel"><div className="form-row two"><label>Nome do negócio<input value={data.settings.businessName} onChange={(e) => setData({ ...data, settings: { ...data.settings, businessName: e.target.value } })} /></label><label>Meta mensal<input type="number" min="0" value={data.settings.monthlyGoal} onChange={(e) => setData({ ...data, settings: { ...data.settings, monthlyGoal: Number(e.target.value) } })} /></label></div><div className="form-row two"><label>Dias de trabalho no mês<input type="number" min="1" max="31" value={data.settings.workDays} onChange={(e) => setData({ ...data, settings: { ...data.settings, workDays: Number(e.target.value) } })} /></label><label>Valor da sua hora<input type="number" min="0" value={data.settings.hourlyRate} onChange={(e) => setData({ ...data, settings: { ...data.settings, hourlyRate: Number(e.target.value) } })} /></label></div><div className="backup-box"><div><strong>Backup dos seus dados</strong><p>Exporte uma cópia para não perder ingredientes, bases e receitas.</p></div><div className="backup-actions"><button className="secondary-button" type="button" onClick={exportData}>Exportar backup</button><label className="file-button">Restaurar backup<input type="file" accept="application/json" onChange={importData} /></label></div></div><button className="danger-button" type="button" onClick={() => { setData(initialData); localStorage.removeItem("doce-lucro-data-v1"); flash("Demonstração restaurada."); }}>Restaurar demonstração</button></section></div>;
+  const renderSettings = () => <div className="module-stack"><section className="module-header"><div><span className="section-label">AJUSTES</span><h2>Personalize o Doce Lucro</h2></div></section><section className="panel settings-panel"><div className="form-row two"><label>Nome do negócio<input value={data.settings.businessName} onChange={(e) => setData({ ...data, settings: { ...data.settings, businessName: e.target.value } })} /></label><label>Meta mensal<input type="number" min="0" value={data.settings.monthlyGoal} onChange={(e) => setData({ ...data, settings: { ...data.settings, monthlyGoal: Number(e.target.value) } })} /></label></div><div className="form-row two"><label>Dias de trabalho no mês<input type="number" min="1" max="31" value={data.settings.workDays} onChange={(e) => setData({ ...data, settings: { ...data.settings, workDays: Number(e.target.value) } })} /></label><label>Valor da sua hora<input type="number" min="0" value={data.settings.hourlyRate} onChange={(e) => setData({ ...data, settings: { ...data.settings, hourlyRate: Number(e.target.value) } })} /></label></div><div className="backup-box"><div><strong>Backup dos seus dados</strong><p>Exporte uma cópia para não perder ingredientes, bases e receitas.</p></div><div className="backup-actions"><button className="secondary-button" type="button" onClick={exportData}>Exportar backup</button><label className="file-button">Restaurar backup<input type="file" accept="application/json" onChange={importData} /></label></div></div><button className="danger-button" type="button" onClick={() => { setData(initialData); localStorage.removeItem("doce-lucro-data-v1"); localStorage.removeItem("doce-lucro-data-v2"); localStorage.removeItem("doce-lucro-data-v3"); flash("Demonstração restaurada."); }}>Restaurar demonstração</button></section></div>;
 
   return (
     <main className="app-shell"><aside className="sidebar"><div className="brand"><span className="brand-mark">DL</span><div><strong>Doce Lucro</strong><small>Gestão para confeitaria</small></div></div><nav aria-label="Navegação principal">{navItems.map((item) => <button className={active === item ? "nav-item active" : "nav-item"} key={item} onClick={() => setActive(item)} type="button"><span className="nav-dot" />{item}</button>)}</nav><div className="sidebar-note"><span>Meta do mês</span><strong>{stats.progress.toFixed(0)}% alcançada</strong><div className="mini-progress"><span style={{ width: `${stats.progress}%` }} /></div><small>{stats.missing ? `Faltam ${money.format(stats.missing)}` : "Meta concluída!"}</small></div></aside>
