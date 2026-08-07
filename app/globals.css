@@ -222,13 +222,19 @@ button { color: inherit; }
 .recipe-line { display: grid; grid-template-columns: 1.5fr .7fr 34px; gap: 8px; margin-bottom: 8px; }
 .recipe-line button { border: 0; border-radius: 9px; background: #f5e8e8; color: #9c4356; cursor: pointer; font-size: 18px; }
 .add-line-button { border: 1px dashed #d4a2b1; border-radius: 9px; background: #fff9fb; color: var(--berry); padding: 9px 12px; font-size: 10px; font-weight: 800; cursor: pointer; }
-.price-preview { display: grid; grid-template-columns: repeat(3, 1fr) 1.15fr auto; gap: 10px; align-items: stretch; border-radius: 15px; background: var(--cream); padding: 12px; }
+.price-preview { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: stretch; border-radius: 15px; background: var(--cream); padding: 12px; }
 .price-preview > div { padding: 8px 10px; }
 .price-preview span, .price-preview strong { display: block; }
 .price-preview span { color: var(--muted); font-size: 9px; }
 .price-preview strong { margin-top: 5px; font: 700 17px Georgia, serif; }
 .price-preview .suggested { border-radius: 10px; background: var(--berry-soft); }
 .price-preview .suggested strong { color: var(--berry); font-size: 21px; }
+.price-preview .cost-final { border-radius: 10px; background: var(--green-soft); }
+.price-preview .cost-final strong { color: var(--green); font-size: 22px; }
+.price-preview .selling-price { border-radius: 10px; background: white; }
+.price-preview .selling-price strong { color: var(--ink); }
+.price-preview .profit-preview { border-radius: 10px; background: #edf6f1; }
+.price-preview .profit-preview strong { color: var(--green); }
 .packaging-rule { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; align-items: end; border: 1px solid #cfe4dc; border-radius: 14px; background: #f1f8f5; padding: 14px; }
 .packaging-rule > div { display: grid; gap: 4px; }
 .packaging-rule strong { color: #2f6756; font-size: 13px; }
@@ -243,7 +249,7 @@ button { color: inherit; }
 .yield-packaging-note span { color: var(--muted); font-size: 9px; }
 .yield-packaging-note strong { margin-top: 4px; color: var(--berry); font-size: 13px; }
 .form-warning { border-radius: 10px; background: #fff1e8; color: #8a4f2d; padding: 11px 13px; font-size: 10px; font-weight: 700; }
-.product-form-actions { display: flex; gap: 8px; align-items: stretch; }
+.product-form-actions { grid-column: 1/-1; display: flex; justify-content: flex-end; gap: 8px; align-items: stretch; }
 .product-form-actions button { white-space: nowrap; }
 .form-save-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .form-save-actions .primary-button { min-width: 190px; }
@@ -275,6 +281,8 @@ button { color: inherit; }
 .detail-totals strong { margin-top: 5px; font: 700 18px Georgia, serif; }
 .detail-totals .highlight { background: var(--berry-soft); }
 .detail-totals .highlight strong { color: var(--berry); }
+.detail-totals .cost-highlight { background: var(--green-soft); }
+.detail-totals .cost-highlight strong { color: var(--green); }
 .detail-percentages { display: flex; flex-wrap: wrap; gap: 7px; margin: -7px 0 16px; }
 .detail-percentages span { border-radius: 999px; background: #f2ece5; padding: 6px 9px; color: var(--muted); font-size: 9px; font-weight: 750; }
 .creation-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
@@ -304,6 +312,11 @@ button { color: inherit; }
 .recipe-price small { color: var(--muted); font-size: 9px; }
 .recipe-price strong { margin: 4px 0; color: var(--berry); font: 700 19px Georgia, serif; }
 .recipe-price span { color: var(--muted); font-size: 8px; }
+.product-price-summary { min-width: 150px; }
+.product-price-summary .final-cost { color: var(--green); font-size: 24px; }
+.product-price-summary > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 7px; padding-top: 7px; border-top: 1px dashed var(--line); }
+.product-price-summary > div small { text-align: left; font-size: 8px; }
+.product-price-summary > div b { font-size: 10px; }
 .composition-list { margin: 14px 0 8px; border-top: 1px solid var(--line); }
 .composition-list > span { display: block; padding: 11px 0 6px; color: var(--muted); font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .09em; }
 .composition-list > div { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 7px 0; border-bottom: 1px dashed var(--line); font-size: 10px; }
@@ -326,6 +339,13 @@ button { color: inherit; }
 .form-total span { color: var(--green); font-size: 10px; font-weight: 750; }
 .form-total strong { color: var(--green); font: 700 20px Georgia, serif; }
 .empty-copy { color: var(--muted); font-size: 11px; line-height: 1.6; }
+.markup-setting { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(130px, .5fr) minmax(180px, .7fr); gap: 16px; align-items: end; border: 1px solid #cfe4dc; border-radius: 15px; background: #f2f8f5; padding: 16px; }
+.markup-setting h3 { margin: 5px 0 4px; }
+.markup-setting p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.markup-example { border-radius: 12px; background: white; padding: 11px 13px; }
+.markup-example span, .markup-example strong, .markup-example small { display: block; }
+.markup-example span, .markup-example small { color: var(--muted); font-size: 8px; }
+.markup-example strong { margin: 5px 0; color: var(--green); font: 700 20px Georgia, serif; }
 .backup-box { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-top: 5px; border: 1px solid var(--line); border-radius: 15px; background: var(--cream); padding: 16px; }
 .backup-box strong { font-size: 12px; }
 .backup-box p { margin: 4px 0 0; color: var(--muted); font-size: 10px; }
@@ -376,6 +396,7 @@ button { color: inherit; }
   .catalog-grid { grid-template-columns: 1fr; }
   .recipe-catalog { grid-template-columns: 1fr; }
   .backup-box { display: grid; }
+  .markup-setting { grid-template-columns: 1fr; align-items: stretch; }
   .backup-actions { flex-wrap: wrap; }
   .toast { right: 14px; left: 14px; bottom: 78px; text-align: center; }
   .values-tabs button { min-height: 60px; padding: 7px 4px; font-size: 8px; line-height: 1.25; }
