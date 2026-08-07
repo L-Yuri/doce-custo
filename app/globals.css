@@ -293,6 +293,9 @@ button { color: inherit; }
 .spending-section-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; margin-bottom: 6px; }
 .spending-section-heading h3 { margin: 4px 0 0; font: 700 17px Georgia, serif; }
 .spending-section-heading > strong { color: var(--berry); font-size: 13px; }
+.spending-section-help { margin: 5px 0 0; color: var(--muted); font-size: 9px; }
+.detail-modal-actions { display: flex; justify-content: flex-end; gap: 10px; padding-top: 4px; }
+.detail-modal-actions button { min-width: 150px; }
 .detail-empty { margin: 8px 0 0; border-radius: 11px; background: var(--cream); color: var(--muted); padding: 13px; font-size: 10px; text-align: center; }
 .creation-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
 .creation-toolbar small { color: var(--muted); font-size: 10px; }
@@ -424,6 +427,8 @@ button { color: inherit; }
   .detail-overlay { place-items: end center; padding: 0; }
   .cost-detail-modal { width: 100%; max-height: 92vh; border-radius: 22px 22px 0 0; padding: 18px 18px calc(18px + env(safe-area-inset-bottom)); }
   .detail-totals, .detail-totals.product-totals { grid-template-columns: 1fr; }
+  .detail-modal-actions { flex-direction: column; }
+  .detail-modal-actions button { width: 100%; }
 }
 
 @media (max-width: 420px) {
