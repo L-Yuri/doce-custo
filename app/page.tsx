@@ -6,7 +6,7 @@ type Unit = "g" | "ml" | "un";
 type PurchaseUnit = Unit | "kg" | "l";
 type MeasureKind = "weight" | "volume" | "count";
 type ValuesTab = "ingredients" | "update" | "create";
-type DetailView = { kind: "base" | "product"; id: string } | { kind: "spending" } | null;
+type DetailView = { kind: "base" | "product"; id: string } | { kind: "revenue" | "spending" } | null;
 type Ingredient = { id: string; name: string; purchaseQty: number; purchaseUnit: PurchaseUnit; purchaseCost: number; unit: Unit; wastePct: number };
 type IngredientLine = { ingredientId: string; quantity: number };
 type ComponentLine = { kind: "ingredient" | "base"; itemId: string; quantity: number };
@@ -232,11 +232,15 @@ export default function Home() {
     if (product) { const cost = productCost(product, data.ingredients, data.bases, data.settings); setSaleForm((old) => ({ ...old, unitPrice: Number((product.sellingPrice || cost.suggestedPrice).toFixed(2)) })); }
   }, [data, saleForm.productId, saleForm.unitPrice]);
 
-  const currentMonth = isoDate().slice(0, 7);
+  const today = isoDate();
+  const currentMonth = today.slice(0, 7);
   const stats = useMemo(() => {
     const sales = data.sales.filter((sale) => sale.date.startsWith(currentMonth));
+    const todaySales = sales.filter((sale) => sale.date === today);
     const expenses = data.expenses.filter((expense) => expense.date.startsWith(currentMonth));
     const revenue = sales.reduce((sum, sale) => sum + sale.quantity * sale.unitPrice, 0);
+    const todayRevenue = todaySales.reduce((sum, sale) => sum + sale.quantity * sale.unitPrice, 0);
+    const todayQuantity = todaySales.reduce((sum, sale) => sum + sale.quantity, 0);
     const cogs = sales.reduce((sum, sale) => {
       const product = data.products.find((item) => item.id === sale.productId);
       return sum + (product ? sale.quantity * productCost(product, data.ingredients, data.bases, data.settings).unitCost : 0);
@@ -254,8 +258,8 @@ export default function Home() {
       const unitCost = productCost(product, data.ingredients, data.bases, data.settings).unitCost;
       return { name: product.name, quantity, profit: productRevenue - quantity * unitCost };
     }).filter((item) => item.quantity > 0).sort((a, b) => b.profit - a.profit);
-    return { revenue, cogs, expenseTotal, totalSpend: cogs + expenseTotal, profit, progress, missing, remainingDays, dailyTarget: missing / remainingDays, ranking };
-  }, [currentMonth, data]);
+    return { revenue, todayRevenue, todayQuantity, cogs, expenseTotal, totalSpend: cogs + expenseTotal, profit, progress, missing, remainingDays, dailyTarget: missing / remainingDays, ranking };
+  }, [currentMonth, data, today]);
 
   const selectedIngredient = data.ingredients.find((item) => item.id === costForm.ingredientId);
   const filteredIngredients = data.ingredients
@@ -389,6 +393,11 @@ export default function Home() {
     if (!detailView) return null;
     const close = () => setDetailView(null);
 
+    if (detailView.kind === "revenue") {
+      const monthSales = data.sales.filter((sale) => sale.date.startsWith(currentMonth)).slice().sort((a, b) => b.date.localeCompare(a.date));
+      return <div className="detail-overlay" role="presentation" onMouseDown={close}><section className="cost-detail-modal revenue-detail-modal" role="dialog" aria-modal="true" aria-labelledby="revenue-detail-title" onMouseDown={(event) => event.stopPropagation()}><header><div><span className="type-pill product-type">VENDAS DO MÊS</span><h2 id="revenue-detail-title">Faturamento mensal</h2><p>Veja quanto entrou hoje e o total acumulado no mês.</p></div><button type="button" aria-label="Fechar detalhes" onClick={close}>×</button></header><div className="detail-totals revenue-totals"><div><span>Vendas de hoje</span><strong>{money.format(stats.todayRevenue)}</strong><small>{quantityNumber.format(stats.todayQuantity)} produto(s)</small></div><div className="revenue-highlight"><span>Faturamento total no mês</span><strong>{money.format(stats.revenue)}</strong><small>{stats.progress.toFixed(0)}% da meta mensal</small></div></div><section className="spending-section"><div className="spending-section-heading"><div><span className="section-label">HISTÓRICO DO MÊS</span><h3>Vendas registradas</h3></div><strong>{money.format(stats.revenue)}</strong></div>{monthSales.length ? <div className="detail-cost-list">{monthSales.map((sale) => { const product = data.products.find((item) => item.id === sale.productId); return <div className="detail-cost-row" key={sale.id}><div><strong>{product?.name ?? "Produto removido"}</strong><small>{new Date(`${sale.date}T12:00:00`).toLocaleDateString("pt-BR")} · {quantityNumber.format(sale.quantity)} un. × {money.format(sale.unitPrice)}</small></div><b>{money.format(sale.quantity * sale.unitPrice)}</b></div>; })}</div> : <p className="detail-empty">Nenhuma venda registrada neste mês.</p>}</section><div className="detail-modal-actions"><button className="secondary-button" type="button" onClick={() => { close(); setActive("Vendas"); }}>Registrar ou ver vendas</button><button className="primary-button" type="button" onClick={close}>Fechar detalhes</button></div></section></div>;
+    }
+
     if (detailView.kind === "spending") {
       const monthSales = data.sales.filter((sale) => sale.date.startsWith(currentMonth));
       const monthExpenses = data.expenses.filter((expense) => expense.date.startsWith(currentMonth)).slice().sort((a, b) => b.date.localeCompare(a.date));
@@ -417,7 +426,7 @@ export default function Home() {
   const renderDashboard = () => (
     <>
       <section className="summary-grid" aria-label="Resumo financeiro">
-        <article className="metric-card revenue"><span>Faturamento no mês</span><strong>{money.format(stats.revenue)}</strong><small>{stats.progress.toFixed(0)}% da meta mensal</small></article>
+        <button className="metric-card revenue revenue-card" type="button" aria-label="Ver vendas e faturamento do mês" onClick={() => setDetailView({ kind: "revenue" })}><span>Vendas de hoje</span><strong>{money.format(stats.todayRevenue)}</strong><small>{stats.todayQuantity ? `${quantityNumber.format(stats.todayQuantity)} produto(s) vendido(s) hoje` : "Nenhuma venda hoje"} · toque para ver o mês</small><span className="metric-card-arrow" aria-hidden="true">›</span></button>
         <article className="metric-card spending-card"><button className="metric-details-button" type="button" aria-label="Ver composição dos gastos totais" onClick={() => setDetailView({ kind: "spending" })}>+</button><span>Gastos totais</span><strong>{money.format(stats.totalSpend)}</strong><small>Produção + despesas registradas · toque no +</small></article>
         <article className="metric-card profit"><span>Lucro líquido estimado</span><strong>{money.format(stats.profit)}</strong><small>{stats.revenue ? `${(stats.profit / stats.revenue * 100).toFixed(1)}% do faturamento` : "Registre sua primeira venda"}</small></article>
       </section>
