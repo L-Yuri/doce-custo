@@ -6,7 +6,7 @@ type Unit = "g" | "ml" | "un";
 type PurchaseUnit = Unit | "kg" | "l";
 type MeasureKind = "weight" | "volume" | "count";
 type ValuesTab = "ingredients" | "update" | "create";
-type DetailView = { kind: "base" | "product"; id: string } | null;
+type DetailView = { kind: "base" | "product"; id: string } | { kind: "spending" } | null;
 type Ingredient = { id: string; name: string; purchaseQty: number; purchaseUnit: PurchaseUnit; purchaseCost: number; unit: Unit; wastePct: number };
 type IngredientLine = { ingredientId: string; quantity: number };
 type ComponentLine = { kind: "ingredient" | "base"; itemId: string; quantity: number };
@@ -385,6 +385,17 @@ export default function Home() {
     if (!detailView) return null;
     const close = () => setDetailView(null);
 
+    if (detailView.kind === "spending") {
+      const monthSales = data.sales.filter((sale) => sale.date.startsWith(currentMonth));
+      const monthExpenses = data.expenses.filter((expense) => expense.date.startsWith(currentMonth)).slice().sort((a, b) => b.date.localeCompare(a.date));
+      const productionRows = data.products.map((product) => {
+        const quantity = monthSales.filter((sale) => sale.productId === product.id).reduce((sum, sale) => sum + sale.quantity, 0);
+        const unitCost = productCost(product, data.ingredients, data.bases, data.settings).unitCost;
+        return { product, quantity, unitCost, subtotal: quantity * unitCost };
+      }).filter((row) => row.quantity > 0);
+      return <div className="detail-overlay" role="presentation" onMouseDown={close}><section className="cost-detail-modal spending-detail-modal" role="dialog" aria-modal="true" aria-labelledby="spending-detail-title" onMouseDown={(event) => event.stopPropagation()}><header><div><span className="type-pill base-type">GASTOS DO MÊS</span><h2 id="spending-detail-title">Composição dos gastos totais</h2><p>Produção das vendas + despesas registradas neste mês.</p></div><button type="button" aria-label="Fechar detalhes" onClick={close}>×</button></header><div className="detail-totals spending-totals"><div><span>Custo de produção</span><strong>{money.format(stats.cogs)}</strong></div><div><span>Despesas registradas</span><strong>{money.format(stats.expenseTotal)}</strong></div><div className="cost-highlight"><span>Gastos totais</span><strong>{money.format(stats.totalSpend)}</strong></div></div><section className="spending-section"><div className="spending-section-heading"><div><span className="section-label">PRODUÇÃO</span><h3>Custo dos produtos vendidos</h3></div><strong>{money.format(stats.cogs)}</strong></div>{productionRows.length ? <div className="detail-cost-list">{productionRows.map((row) => <div className="detail-cost-row" key={row.product.id}><div><strong>{row.product.name}</strong><small>{quantityNumber.format(row.quantity)} vendido(s) × {money.format(row.unitCost)} de custo/un.</small></div><b>{money.format(row.subtotal)}</b></div>)}</div> : <p className="detail-empty">Nenhuma venda com custo de produção neste mês.</p>}</section><section className="spending-section"><div className="spending-section-heading"><div><span className="section-label">DESPESAS</span><h3>Despesas registradas</h3></div><strong>{money.format(stats.expenseTotal)}</strong></div>{monthExpenses.length ? <div className="detail-cost-list">{monthExpenses.map((expense) => <div className="detail-cost-row" key={expense.id}><div><strong>{expense.description}</strong><small>{expense.category} · {new Date(`${expense.date}T12:00:00`).toLocaleDateString("pt-BR")}</small></div><b>{money.format(expense.amount)}</b></div>)}</div> : <p className="detail-empty">Nenhuma despesa registrada neste mês.</p>}</section><button className="primary-button full" type="button" onClick={close}>Fechar detalhes</button></section></div>;
+    }
+
     if (detailView.kind === "base") {
       const base = data.bases.find((item) => item.id === detailView.id);
       if (!base) return null;
@@ -403,7 +414,7 @@ export default function Home() {
     <>
       <section className="summary-grid" aria-label="Resumo financeiro">
         <article className="metric-card revenue"><span>Faturamento no mês</span><strong>{money.format(stats.revenue)}</strong><small>{stats.progress.toFixed(0)}% da meta mensal</small></article>
-        <article className="metric-card"><span>Gastos totais</span><strong>{money.format(stats.totalSpend)}</strong><small>Produção + despesas registradas</small></article>
+        <article className="metric-card spending-card"><button className="metric-details-button" type="button" aria-label="Ver composição dos gastos totais" onClick={() => setDetailView({ kind: "spending" })}>+</button><span>Gastos totais</span><strong>{money.format(stats.totalSpend)}</strong><small>Produção + despesas registradas · toque no +</small></article>
         <article className="metric-card profit"><span>Lucro líquido estimado</span><strong>{money.format(stats.profit)}</strong><small>{stats.revenue ? `${(stats.profit / stats.revenue * 100).toFixed(1)}% do faturamento` : "Registre sua primeira venda"}</small></article>
       </section>
       <section className="main-grid">

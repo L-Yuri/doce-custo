@@ -70,6 +70,8 @@ button { color: inherit; }
 .metric-card small { color: var(--muted); font-size: 10px; }
 .metric-card.revenue small { color: var(--berry); }
 .metric-card.profit small { color: var(--green); }
+.metric-details-button { position: absolute; top: 13px; right: 13px; display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid #d8c9c0; border-radius: 50%; background: white; color: var(--berry); font-size: 20px; line-height: 1; cursor: pointer; box-shadow: 0 5px 14px rgba(68, 48, 40, .08); }
+.spending-card { padding-right: 48px; }
 
 .main-grid, .bottom-grid { display: grid; grid-template-columns: 1.7fr 1fr; gap: 15px; margin-top: 15px; }
 .panel { padding: 22px; }
@@ -285,6 +287,13 @@ button { color: inherit; }
 .detail-totals .cost-highlight strong { color: var(--green); }
 .detail-percentages { display: flex; flex-wrap: wrap; gap: 7px; margin: -7px 0 16px; }
 .detail-percentages span { border-radius: 999px; background: #f2ece5; padding: 6px 9px; color: var(--muted); font-size: 9px; font-weight: 750; }
+.spending-totals { grid-template-columns: repeat(3, 1fr); }
+.spending-section { margin: 18px 0; }
+.spending-section + .spending-section { padding-top: 4px; border-top: 1px solid var(--line); }
+.spending-section-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; margin-bottom: 6px; }
+.spending-section-heading h3 { margin: 4px 0 0; font: 700 17px Georgia, serif; }
+.spending-section-heading > strong { color: var(--berry); font-size: 13px; }
+.detail-empty { margin: 8px 0 0; border-radius: 11px; background: var(--cream); color: var(--muted); padding: 13px; font-size: 10px; text-align: center; }
 .creation-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
 .creation-toolbar small { color: var(--muted); font-size: 10px; }
 .creation-toggle { display: inline-flex; align-items: center; gap: 9px; border: 0; border-radius: 14px; background: var(--berry); color: white; padding: 12px 17px; box-shadow: 0 9px 22px rgba(157, 49, 82, .16); font-size: 11px; font-weight: 850; cursor: pointer; }
