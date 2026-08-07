@@ -277,8 +277,17 @@ button { color: inherit; }
 .detail-totals .highlight strong { color: var(--berry); }
 .detail-percentages { display: flex; flex-wrap: wrap; gap: 7px; margin: -7px 0 16px; }
 .detail-percentages span { border-radius: 999px; background: #f2ece5; padding: 6px 9px; color: var(--muted); font-size: 9px; font-weight: 750; }
-.production-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; align-items: start; }
-.base-list { display: grid; gap: 12px; }
+.creation-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.creation-toolbar small { color: var(--muted); font-size: 10px; }
+.creation-toggle { display: inline-flex; align-items: center; gap: 9px; border: 0; border-radius: 14px; background: var(--berry); color: white; padding: 12px 17px; box-shadow: 0 9px 22px rgba(157, 49, 82, .16); font-size: 11px; font-weight: 850; cursor: pointer; }
+.creation-toggle span { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: rgba(255, 255, 255, .18); font-size: 18px; font-weight: 500; line-height: 1; }
+.creation-toggle.active { background: white; color: var(--berry); box-shadow: inset 0 0 0 1px #d9b7c1; }
+.creation-toggle.active span { background: var(--berry-soft); }
+.creation-form.is-collapsed { display: none; }
+.creation-form.is-open { animation: reveal-form .22s ease-out; }
+@keyframes reveal-form { from { opacity: 0; transform: translateY(-7px); } to { opacity: 1; transform: translateY(0); } }
+.production-grid { display: grid; grid-template-columns: 1fr; gap: 15px; align-items: start; }
+.base-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .base-preview { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; border-radius: 13px; background: var(--cream); padding: 11px; }
 .base-preview > div { padding: 7px 9px; }
 .base-preview span, .base-preview strong { display: block; }
@@ -360,6 +369,7 @@ button { color: inherit; }
   .donut span { font-size: 23px; }
   .panel { padding: 18px; }
   .empty-panel { padding: 40px 20px; }
+  .base-list { grid-template-columns: 1fr; }
   .form-row.two, .form-row.three, .form-row.four { grid-template-columns: 1fr 1fr; }
   .price-preview { grid-template-columns: 1fr 1fr; }
   .product-form-actions { grid-column: 1/-1; }
