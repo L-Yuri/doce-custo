@@ -1,5 +1,13 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "entries": []
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1786132936788,
+      "tag": "0000_orange_agent_brand",
+      "breakpoints": true
+    }
+  ]
 }

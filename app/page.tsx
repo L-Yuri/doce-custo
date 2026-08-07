@@ -1,12 +1,12 @@
 "use client";
 
-import { ChangeEvent, CSSProperties, FormEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, CSSProperties, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 type Unit = "g" | "ml" | "un";
 type PurchaseUnit = Unit | "kg" | "l";
 type MeasureKind = "weight" | "volume" | "count";
 type ValuesTab = "ingredients" | "update" | "create";
-type DetailView = { kind: "base" | "product"; id: string } | { kind: "revenue" | "spending" } | null;
+type DetailView = { kind: "base" | "product"; id: string } | { kind: "revenue" } | { kind: "spending" } | null;
 type Ingredient = { id: string; name: string; purchaseQty: number; purchaseUnit: PurchaseUnit; purchaseCost: number; unit: Unit; wastePct: number };
 type IngredientLine = { ingredientId: string; quantity: number };
 type ComponentLine = { kind: "ingredient" | "base"; itemId: string; quantity: number };
@@ -22,11 +22,16 @@ type AppData = { ingredients: Ingredient[]; bases: BaseRecipe[]; products: Produ
 type StoredIngredient = Omit<Ingredient, "purchaseUnit"> & { purchaseUnit?: PurchaseUnit };
 type StoredProduct = Omit<Product, "recipe" | "packagingIngredientId" | "sellingPrice"> & { packagingIngredientId?: string; packagingPerUnit?: number; sellingPrice?: number; desiredMargin?: number; recipe: Array<ComponentLine | { ingredientId: string; quantity: number }> };
 type StoredData = Partial<Omit<AppData, "ingredients" | "products">> & { ingredients?: StoredIngredient[]; products?: StoredProduct[] };
+type CloudStatus = "checking" | "signed-out" | "syncing" | "synced" | "offline" | "conflict";
+type CloudResponse = { email?: string; data?: StoredData | null; revision?: number | null; updatedAt?: string | null; signInPath?: string; error?: string };
+type CloudMeta = { revision: number | null; pending: boolean };
 
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const unitMoney = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 4 });
 const quantityNumber = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 3 });
 const navItems = ["Visão geral", "Valores", "Minhas bases", "Minhas receitas", "Vendas", "Despesas", "Ajustes"];
+const cloudMetaKey = "doce-lucro-cloud-meta-v1";
+const cloudConflictKey = "doce-lucro-cloud-conflict-backup-v1";
 const uid = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 const isoDate = (offset = 0) => {
   const date = new Date(); date.setDate(date.getDate() + offset);
@@ -188,6 +193,13 @@ export default function Home() {
   const [data, setData] = useState<AppData>(initialData);
   const [ready, setReady] = useState(false);
   const [notice, setNotice] = useState("");
+  const [cloudStatus, setCloudStatus] = useState<CloudStatus>("checking");
+  const [cloudEmail, setCloudEmail] = useState("");
+  const [signInPath, setSignInPath] = useState("/signin-with-chatgpt?return_to=%2F");
+  const cloudRevisionRef = useRef<number | null>(null);
+  const cloudReadyRef = useRef(false);
+  const skipCloudSaveRef = useRef(false);
+  const cloudSaveTimerRef = useRef<number | null>(null);
   const [valuesTab, setValuesTab] = useState<ValuesTab>("ingredients");
   const [ingredientSearch, setIngredientSearch] = useState("");
   const [ingredientUnitFilter, setIngredientUnitFilter] = useState<"all" | Unit>("all");
@@ -210,21 +222,145 @@ export default function Home() {
   const [expenseForm, setExpenseForm] = useState({ date: isoDate(), description: "", category: "Produção", amount: 0 });
 
   useEffect(() => {
+    let cancelled = false;
+    let loadedData = initialData;
     try {
       const current = localStorage.getItem("doce-lucro-data-v5");
       const version4 = localStorage.getItem("doce-lucro-data-v4");
       const previous = localStorage.getItem("doce-lucro-data-v3") ?? localStorage.getItem("doce-lucro-data-v2") ?? localStorage.getItem("doce-lucro-data-v1");
-      if (current) setData(normalizeData(JSON.parse(current)));
-      else if (version4) setData(removeDemoTransactions(normalizeData(JSON.parse(version4))));
-      else if (previous) setData(removeDemoTransactions(mergeShoppingListIngredients(normalizeData(JSON.parse(previous)))));
+      if (current) loadedData = normalizeData(JSON.parse(current));
+      else if (version4) loadedData = removeDemoTransactions(normalizeData(JSON.parse(version4)));
+      else if (previous) loadedData = removeDemoTransactions(mergeShoppingListIngredients(normalizeData(JSON.parse(previous))));
     } catch { setNotice("Não foi possível carregar o backup deste aparelho."); }
-    finally { setReady(true); }
+    setData(loadedData);
+    setReady(true);
+
+    const readCloudMeta = (): CloudMeta | null => {
+      try { return JSON.parse(localStorage.getItem(cloudMetaKey) ?? "null") as CloudMeta | null; }
+      catch { return null; }
+    };
+    const writeCloudMeta = (revision: number | null, pending: boolean) => localStorage.setItem(cloudMetaKey, JSON.stringify({ revision, pending }));
+    const acceptRemote = (snapshot: CloudResponse, preserveLocal: boolean) => {
+      if (!snapshot.data || typeof snapshot.revision !== "number") return;
+      if (preserveLocal) localStorage.setItem(cloudConflictKey, JSON.stringify(loadedData));
+      cloudRevisionRef.current = snapshot.revision;
+      cloudReadyRef.current = true;
+      skipCloudSaveRef.current = true;
+      writeCloudMeta(snapshot.revision, false);
+      setData(normalizeData(snapshot.data));
+      setCloudStatus(preserveLocal ? "conflict" : "synced");
+      if (preserveLocal) setNotice("A nuvem tinha alterações mais recentes. A cópia deste aparelho foi preservada como backup.");
+    };
+    const upload = async (candidate: AppData, expectedRevision: number | null) => {
+      const response = await fetch("/api/sync", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ data: candidate, expectedRevision }),
+      });
+      return { response, snapshot: await response.json() as CloudResponse };
+    };
+
+    void (async () => {
+      try {
+        const response = await fetch("/api/sync", { cache: "no-store" });
+        const snapshot = await response.json() as CloudResponse;
+        if (cancelled) return;
+        if (response.status === 401) {
+          setSignInPath(snapshot.signInPath ?? "/signin-with-chatgpt?return_to=%2F");
+          setCloudStatus("signed-out");
+          return;
+        }
+        if (!response.ok) throw new Error(snapshot.error ?? "Falha ao consultar a nuvem.");
+        setCloudEmail(snapshot.email ?? "");
+        const meta = readCloudMeta();
+
+        if (snapshot.data && typeof snapshot.revision === "number") {
+          if (meta?.pending && meta.revision === snapshot.revision) {
+            const result = await upload(loadedData, snapshot.revision);
+            if (cancelled) return;
+            if (result.response.ok && typeof result.snapshot.revision === "number") {
+              cloudRevisionRef.current = result.snapshot.revision;
+              cloudReadyRef.current = true;
+              writeCloudMeta(result.snapshot.revision, false);
+              setCloudStatus("synced");
+            } else if (result.response.status === 409) acceptRemote(result.snapshot, true);
+            else throw new Error(result.snapshot.error ?? "Falha ao enviar os dados locais.");
+          } else {
+            acceptRemote(snapshot, Boolean(meta?.pending));
+          }
+          return;
+        }
+
+        const result = await upload(loadedData, null);
+        if (cancelled) return;
+        if (result.response.ok && typeof result.snapshot.revision === "number") {
+          cloudRevisionRef.current = result.snapshot.revision;
+          cloudReadyRef.current = true;
+          writeCloudMeta(result.snapshot.revision, false);
+          setCloudStatus("synced");
+          setNotice("Dados deste aparelho enviados para a nuvem.");
+        } else if (result.response.status === 409) acceptRemote(result.snapshot, true);
+        else throw new Error(result.snapshot.error ?? "Falha ao iniciar a sincronização.");
+      } catch {
+        if (!cancelled) setCloudStatus("offline");
+      }
+    })();
+
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
     if (process.env.NODE_ENV === "production" && "serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => undefined);
   }, []);
-  useEffect(() => { if (ready) localStorage.setItem("doce-lucro-data-v5", JSON.stringify(data)); }, [data, ready]);
+  useEffect(() => {
+    if (cloudStatus !== "offline") return;
+    const retryCloudSync = () => window.location.reload();
+    window.addEventListener("online", retryCloudSync);
+    return () => window.removeEventListener("online", retryCloudSync);
+  }, [cloudStatus]);
+  useEffect(() => {
+    if (!ready) return;
+    localStorage.setItem("doce-lucro-data-v5", JSON.stringify(data));
+    if (!cloudReadyRef.current) return;
+    if (skipCloudSaveRef.current) { skipCloudSaveRef.current = false; return; }
+
+    localStorage.setItem(cloudMetaKey, JSON.stringify({ revision: cloudRevisionRef.current, pending: true } satisfies CloudMeta));
+    setCloudStatus("syncing");
+    if (cloudSaveTimerRef.current) window.clearTimeout(cloudSaveTimerRef.current);
+    cloudSaveTimerRef.current = window.setTimeout(async () => {
+      try {
+        const response = await fetch("/api/sync", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ data, expectedRevision: cloudRevisionRef.current }),
+        });
+        const snapshot = await response.json() as CloudResponse;
+        if (response.status === 401) {
+          cloudReadyRef.current = false;
+          setSignInPath(snapshot.signInPath ?? "/signin-with-chatgpt?return_to=%2F");
+          setCloudStatus("signed-out");
+          return;
+        }
+        if (response.status === 409 && snapshot.data && typeof snapshot.revision === "number") {
+          localStorage.setItem(cloudConflictKey, JSON.stringify(data));
+          cloudRevisionRef.current = snapshot.revision;
+          skipCloudSaveRef.current = true;
+          localStorage.setItem(cloudMetaKey, JSON.stringify({ revision: snapshot.revision, pending: false } satisfies CloudMeta));
+          setData(normalizeData(snapshot.data));
+          setCloudStatus("conflict");
+          setNotice("Outro aparelho salvou primeiro. A versão mais recente foi carregada e sua cópia local foi preservada.");
+          return;
+        }
+        if (!response.ok || typeof snapshot.revision !== "number") throw new Error(snapshot.error ?? "Falha ao sincronizar.");
+        cloudRevisionRef.current = snapshot.revision;
+        localStorage.setItem(cloudMetaKey, JSON.stringify({ revision: snapshot.revision, pending: false } satisfies CloudMeta));
+        setCloudStatus("synced");
+      } catch {
+        setCloudStatus("offline");
+      }
+    }, 800);
+    return () => { if (cloudSaveTimerRef.current) window.clearTimeout(cloudSaveTimerRef.current); };
+  }, [data, ready]);
   useEffect(() => { if (!notice) return; const timer = window.setTimeout(() => setNotice(""), 3200); return () => window.clearTimeout(timer); }, [notice]);
   useEffect(() => {
     if (saleForm.unitPrice > 0) return;
@@ -260,6 +396,12 @@ export default function Home() {
     }).filter((item) => item.quantity > 0).sort((a, b) => b.profit - a.profit);
     return { revenue, todayRevenue, todayQuantity, cogs, expenseTotal, totalSpend: cogs + expenseTotal, profit, progress, missing, remainingDays, dailyTarget: missing / remainingDays, ranking };
   }, [currentMonth, data, today]);
+  const cloudStatusLabel = cloudStatus === "checking" ? "Verificando nuvem"
+    : cloudStatus === "syncing" ? "Sincronizando"
+      : cloudStatus === "synced" ? "Sincronizado"
+        : cloudStatus === "offline" ? "Salvo neste aparelho"
+          : cloudStatus === "conflict" ? "Nuvem atualizada"
+            : "Sincronizar aparelhos";
 
   const selectedIngredient = data.ingredients.find((item) => item.id === costForm.ingredientId);
   const filteredIngredients = data.ingredients
@@ -498,7 +640,7 @@ export default function Home() {
 
   return (
     <main className="app-shell"><aside className="sidebar"><div className="brand"><span className="brand-mark">DL</span><div><strong>Doce Lucro</strong><small>Gestão para confeitaria</small></div></div><nav aria-label="Navegação principal">{navItems.map((item) => <button className={active === item ? "nav-item active" : "nav-item"} key={item} onClick={() => setActive(item)} type="button"><span className="nav-dot" />{item}</button>)}</nav><div className="sidebar-note"><span>Meta do mês</span><strong>{stats.progress.toFixed(0)}% alcançada</strong><div className="mini-progress"><span style={{ width: `${stats.progress}%` }} /></div><small>{stats.missing ? `Faltam ${money.format(stats.missing)}` : "Meta concluída!"}</small></div></aside>
-      <section className="workspace"><header className="topbar"><div><p className="eyebrow">{dateHeading}</p><h1>{active === "Visão geral" ? `Bom trabalho, ${data.settings.businessName}!` : active}</h1><p>{active === "Visão geral" ? "Acompanhe o que entrou, o que saiu e quanto ficou para você." : active === "Valores" ? "Consulte e atualize seus preços de compra." : "Alterações são salvas automaticamente neste aparelho."}</p></div><div className="topbar-actions"><button className="settings-shortcut" type="button" onClick={() => setActive("Ajustes")}>Ajustes</button><button className="primary-button" type="button" onClick={() => { setActive("Valores"); setValuesTab("update"); }}>Atualizar custo</button></div></header>{active === "Visão geral" && renderDashboard()}{active === "Valores" && renderCosts()}{active === "Minhas bases" && renderBases()}{active === "Minhas receitas" && renderRecipes()}{active === "Vendas" && renderSales()}{active === "Despesas" && renderExpenses()}{active === "Ajustes" && renderSettings()}</section>
+      <section className="workspace"><header className="topbar"><div><p className="eyebrow">{dateHeading}</p><h1>{active === "Visão geral" ? `Bom trabalho, ${data.settings.businessName}!` : active}</h1><p>{active === "Visão geral" ? "Acompanhe o que entrou, o que saiu e quanto ficou para você." : active === "Valores" ? "Consulte e atualize seus preços de compra." : cloudStatus === "synced" ? "Alterações sincronizadas com seus aparelhos." : "Alterações são salvas automaticamente neste aparelho."}</p></div><div className="topbar-actions">{cloudStatus === "signed-out" ? <a className="cloud-status signed-out" href={signInPath}><span />{cloudStatusLabel}</a> : <span className={`cloud-status ${cloudStatus}`} title={cloudEmail || cloudStatusLabel}><span />{cloudStatusLabel}</span>}<button className="settings-shortcut" type="button" onClick={() => setActive("Ajustes")}>Ajustes</button><button className="primary-button" type="button" onClick={() => { setActive("Valores"); setValuesTab("update"); }}>Atualizar custo</button></div></header>{active === "Visão geral" && renderDashboard()}{active === "Valores" && renderCosts()}{active === "Minhas bases" && renderBases()}{active === "Minhas receitas" && renderRecipes()}{active === "Vendas" && renderSales()}{active === "Despesas" && renderExpenses()}{active === "Ajustes" && renderSettings()}</section>
       <nav className="mobile-nav five-items" aria-label="Navegação móvel">{["Visão geral", "Valores", "Minhas bases", "Minhas receitas", "Vendas"].map((item) => <button className={active === item ? "active" : ""} key={item} onClick={() => setActive(item)} type="button"><span>{item === "Valores" ? "$" : item.slice(0, 1)}</span>{item === "Visão geral" ? "Início" : item.replace("Minhas ", "")}</button>)}</nav>{notice && <div className="toast" role="status">{notice}</div>}{renderCostDetails()}</main>
   );
 }
